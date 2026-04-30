@@ -63,6 +63,14 @@ export interface StorySettings {
   /** Default playback rate when a language has no explicit override. */
   ttsRateDefault: number;
   /**
+   * Per-language voice selection for text-to-speech, keyed by the BCP-47
+   * language tag (e.g. { "en-US": "Google US English", "ja-JP": "Google 日本語" }).
+   * When a language is missing from this map, the browser's default voice
+   * for that language is used. The voice name should match one of the voices
+   * returned by SpeechSynthesis.getVoices().
+   */
+  ttsVoices: Record<string, string>;
+  /**
    * Schema version for the persisted settings blob. Bumped whenever a
    * default changes in a way that should overwrite a previously saved
    * value (e.g. when a default was wrong and the user almost certainly
@@ -101,6 +109,7 @@ const DEFAULTS: StorySettings = {
   ttsPlayOrder: [PLAY_ORIGINAL],
   ttsRates: {},
   ttsRateDefault: 0.95,
+  ttsVoices: {},
   settingsVersion: SETTINGS_VERSION,
 };
 
@@ -183,6 +192,7 @@ function load(): StorySettings {
         ...parsed,
         stt: { ...DEFAULTS.stt, ...(parsed.stt ?? {}) },
         ttsRates: { ...DEFAULTS.ttsRates, ...(parsed.ttsRates ?? {}) },
+        ttsVoices: { ...DEFAULTS.ttsVoices, ...(parsed.ttsVoices ?? {}) },
         viewLanguages,
         ttsPlayOrder,
         settingsVersion: SETTINGS_VERSION,

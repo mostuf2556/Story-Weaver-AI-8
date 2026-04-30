@@ -17,6 +17,7 @@ import { useSounds } from "@/hooks/use-sounds";
 import { OpenrouterSettingsDialog } from "@/components/openrouter-settings-dialog";
 import { SttSettingsDialog } from "@/components/stt-settings-dialog";
 import { TtsSpeedDialog } from "@/components/tts-speed-dialog";
+import { TtsVoiceDialog } from "@/components/tts-voice-dialog";
 import { SttLanguageSwitcher } from "@/components/stt-language-switcher";
 import { ViewLanguagesSwitcher } from "@/components/view-languages-switcher";
 import { TtsPlayOrderDialog } from "@/components/tts-play-order-dialog";
@@ -233,7 +234,7 @@ export default function Story() {
   );
 
   /**
-   * Build the ordered list of (text, lang, rate) units that should be
+   * Build the ordered list of (text, lang, rate, voiceName) units that should be
    * spoken for a single message, in the exact order configured by the
    * user via the TTS Play Order dialog (`settings.ttsPlayOrder`).
    *
@@ -251,6 +252,9 @@ export default function Story() {
    * handlers can keep highlighting word-by-word in the rendered original
    * paragraph (which matches the visible text). Translation units don't
    * highlight because the visible word-mapping wouldn't line up.
+   *
+   * `voiceName` is looked up from user settings and passed to voice.speak()
+   * to allow per-language voice selection.
    */
   const buildPlayUnits = useCallback(
     async (msg: {
@@ -259,7 +263,7 @@ export default function Story() {
       role: string;
       language?: string | null;
     }): Promise<
-      Array<{ text: string; lang: string; rate: number; isOriginal: boolean }>
+      Array<{ text: string; lang: string; rate: number; isOriginal: boolean; voiceName?: string }>
     > => {
       const text = msg.content?.trim() ?? "";
       if (!text) return [];
@@ -269,6 +273,7 @@ export default function Story() {
         lang: string;
         rate: number;
         isOriginal: boolean;
+        voiceName?: string;
       }> = [];
 
       const origLang = resolveMessageLanguage(msg);
@@ -281,6 +286,7 @@ export default function Story() {
             lang: origLang,
             rate: rateForLanguage(origLang),
             isOriginal: true,
+            voiceName: settings.ttsVoices[origLang],
           });
           continue;
         }
@@ -307,6 +313,7 @@ export default function Story() {
               lang: item,
               rate: rateForLanguage(item),
               isOriginal: false,
+              voiceName: settings.ttsVoices[item],
             });
           } else {
             console.warn(
@@ -329,6 +336,7 @@ export default function Story() {
       rateForLanguage,
       settings.ttsPlayOrder,
       settings.viewLanguages,
+      settings.ttsVoices,
     ],
   );
 
@@ -405,6 +413,7 @@ export default function Story() {
             onWord: unit.isOriginal
               ? ({ wordIndex }) => setCurrentWordIdx(wordIndex)
               : undefined,
+            voiceName: unit.voiceName,
           });
         }
       }
@@ -528,6 +537,7 @@ export default function Story() {
             onWord: unit.isOriginal
               ? ({ wordIndex }) => setCurrentWordIdx(wordIndex)
               : undefined,
+            voiceName: unit.voiceName,
           });
         }
       } finally {
@@ -681,6 +691,7 @@ export default function Story() {
             lastMsg.content,
             lang,
             cur.ttsRates[lang] ?? cur.ttsRateDefault,
+            { voiceName: cur.ttsVoices[lang] },
           );
         }
 
@@ -746,6 +757,7 @@ export default function Story() {
             transcript.trim(),
             cur.stt.language,
             cur.ttsRates[cur.stt.language] ?? cur.ttsRateDefault,
+            { voiceName: cur.ttsVoices[cur.stt.language] },
           );
           if (!blindModeEnabledRef.current) return;
         }
@@ -1189,6 +1201,7 @@ export default function Story() {
 
           <ThemeToggle />
           <TtsSpeedDialog settings={settings} onSave={updateSettings} />
+          <TtsVoiceDialog settings={settings} onSave={updateSettings} />
           <SttSettingsDialog settings={settings} onSave={updateSettings} />
           <OpenrouterSettingsDialog settings={settings} onSave={updateSettings} />
         </div>
@@ -1380,7 +1393,7 @@ export default function Story() {
                       )}
                     </div>
                   )}
-                  <div className="absolute -right-8 top-0.5 flex flex-col gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
+                  <div className="absolute -right-8 top-0.5 flex flex-row gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
                     <button
                       onClick={() => handlePlayMessage(msg)}
                       aria-label={

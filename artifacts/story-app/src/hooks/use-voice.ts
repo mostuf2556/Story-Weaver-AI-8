@@ -65,23 +65,38 @@ export function useVoice(enabled: boolean) {
   }, []);
 
   /**
-   * Pick the best available voice for the given BCP-47 lang. Tries an exact
-   * match first, then a language-only match (e.g. "en" for "en-US").
+   * Pick the best available voice for the given BCP-47 lang. If a preferred
+   * voice name is provided, tries to match it first. Falls back to trying
+   * an exact language match, then a language-only match (e.g. "en" for
+   * "en-US").
    */
-  const pickVoice = useCallback((lang: string): SpeechSynthesisVoice | null => {
-    const synth = synthRef.current;
-    if (!synth) return null;
-    const voices = synth.getVoices();
-    if (!voices || voices.length === 0) return null;
-    const target = lang.toLowerCase();
-    const targetBase = target.split("-")[0];
-    const exact = voices.find((v) => v.lang.toLowerCase() === target);
-    if (exact) return exact;
-    const baseMatch = voices.find(
-      (v) => v.lang.toLowerCase().split("-")[0] === targetBase,
-    );
-    return baseMatch ?? null;
-  }, []);
+  const pickVoice = useCallback(
+    (lang: string, preferredVoiceName?: string): SpeechSynthesisVoice | null => {
+      const synth = synthRef.current;
+      if (!synth) return null;
+      const voices = synth.getVoices();
+      if (!voices || voices.length === 0) return null;
+      const target = lang.toLowerCase();
+      const targetBase = target.split("-")[0];
+      
+      // If a preferred voice is specified, try to find an exact match
+      if (preferredVoiceName) {
+        const preferred = voices.find(
+          (v) => v.name.toLowerCase() === preferredVoiceName.toLowerCase()
+        );
+        if (preferred) return preferred;
+      }
+      
+      // Fall back to language matching
+      const exact = voices.find((v) => v.lang.toLowerCase() === target);
+      if (exact) return exact;
+      const baseMatch = voices.find(
+        (v) => v.lang.toLowerCase().split("-")[0] === targetBase,
+      );
+      return baseMatch ?? null;
+    },
+    [],
+  );
 
   /**
    * Speak `text` using the browser's SpeechSynthesis API.
@@ -99,18 +114,19 @@ export function useVoice(enabled: boolean) {
    *                 (~0.5–2.0). Defaults to 0.95 to preserve previous
    *                 behaviour. Caller-provided rate lets the story page
    *                 honour per-language playback-speed preferences.
-   * @param opts     Optional callbacks. `onWord` is invoked for each word
-   *                 boundary the engine reports, mapped from `charIndex`
-   *                 to a 0-based word index over the input text. Browsers
-   *                 that don't fire `onboundary` simply produce no
-   *                 highlights — playback is unaffected.
+   * @param opts     Optional callbacks and voice name. `onWord` is invoked for
+   *                 each word boundary the engine reports, mapped from
+   *                 `charIndex` to a 0-based word index over the input text.
+   *                 `voiceName` is a preferred SpeechSynthesisVoice name to use
+   *                 for this language. Browsers that don't fire `onboundary`
+   *                 simply produce no highlights — playback is unaffected.
    */
   const speak = useCallback(
     (
       text: string,
       language: string = "en-US",
       rate: number = 0.95,
-      opts?: { onWord?: (info: { wordIndex: number; charIndex: number }) => void },
+      opts?: { onWord?: (info: { wordIndex: number; charIndex: number }) => void; voiceName?: string },
     ): Promise<void> => {
       return new Promise((resolve) => {
         const synth = synthRef.current;
@@ -147,7 +163,7 @@ export function useVoice(enabled: boolean) {
           // browser falls back to the system default, which on some machines is
           // not the language of the text being spoken.
           utterance.lang = language;
-          const voice = pickVoice(language);
+          const voice = pickVoice(language, opts?.voiceName);
           if (voice) utterance.voice = voice;
 
           if (opts?.onWord && wordRanges.length > 0) {
