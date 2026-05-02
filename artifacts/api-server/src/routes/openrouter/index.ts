@@ -41,6 +41,12 @@ interface AppConfig {
    * Set to false for unrestricted adult / demo use.
    */
   childSafe?: boolean;
+  /**
+   * When true (the default), the debug panel toggle button is shown in the
+   * story page UI so operators can inspect full request/response payloads
+   * and headers in real-time without touching the URL hash.
+   */
+  debugToggle?: boolean;
 }
 
 /**
@@ -195,6 +201,19 @@ function getClient(
   }
   return openrouter;
 }
+
+/**
+ * Expose a subset of the live config so the frontend can adapt its UI
+ * (e.g. show/hide the debug toggle button) without a server restart.
+ */
+router.get("/openrouter/config", async (_req, res): Promise<void> => {
+  const cfg = loadConfig();
+  res.json({
+    debugToggle: cfg.debugToggle !== false,
+    model: getDefaultModel(cfg),
+    childSafe: cfg.childSafe !== false,
+  });
+});
 
 router.get("/openrouter/conversations", async (_req, res): Promise<void> => {
   const conversations = await db
@@ -806,7 +825,13 @@ router.post(
       .where(eq(messagesTable.id, messageId))
       .returning();
 
-    res.status(200).json({ ...updated, requestedModel: effectiveModel, actualModel });
+    res.status(200).json({
+      ...updated,
+      requestedModel: effectiveModel,
+      actualModel,
+      request: requestPayload,
+      response: successCompletion,
+    });
   },
 );
 

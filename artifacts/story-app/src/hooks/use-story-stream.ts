@@ -9,8 +9,18 @@ export interface DebugEntry {
   endpoint: string;
   method: string;
   status: number | null;
+  /** Body sent from browser → API */
   request: unknown;
+  /** Headers sent from browser → API */
+  requestHeaders?: Record<string, string>;
+  /** Body received from API → browser */
   response: unknown;
+  /** Headers received from API → browser */
+  responseHeaders?: Record<string, string>;
+  /** The full request payload forwarded to OpenRouter (from API response body) */
+  openrouterRequest?: unknown;
+  /** The raw completion object returned by OpenRouter (from API response body) */
+  openrouterResponse?: unknown;
   /** Model ID that was sent in the request (may be a generic alias). */
   requestedModel?: string;
   /** Actual model ID resolved and used by the API (extracted from completion). */
@@ -28,13 +38,22 @@ export function subscribeDebug(fn: (entry: DebugEntry) => void): () => void {
   };
 }
 
-function emitDebug(entry: Omit<DebugEntry, "id" | "at">): void {
+export function emitDebug(entry: Omit<DebugEntry, "id" | "at">): void {
   const full: DebugEntry = {
     ...entry,
     id: ++debugIdCounter,
     at: new Date().toISOString(),
   };
   for (const fn of debugListeners) fn(full);
+}
+
+/** Flatten a Headers object into a plain key→value record. */
+function headersToRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
 }
 
 function buildOptionsBody(settings?: StorySettings): Record<string, unknown> {
@@ -72,16 +91,21 @@ export function useStoryStream(conversationId: number, settings?: StorySettings)
       if (settings?.stt?.language) {
         requestBody.language = settings.stt.language;
       }
+      const reqHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
       const start = performance.now();
       let status: number | null = null;
       let responseJson: unknown = null;
+      let responseHeaders: Record<string, string> | undefined;
       try {
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: reqHeaders,
           body: JSON.stringify(requestBody),
         });
         status = response.status;
+        responseHeaders = headersToRecord(response.headers);
         responseJson = await response.json().catch(() => null);
         if (!response.ok) {
           const msg =
@@ -102,7 +126,9 @@ export function useStoryStream(conversationId: number, settings?: StorySettings)
           method: "POST",
           status,
           request: requestBody,
+          requestHeaders: reqHeaders,
           response: responseJson,
+          responseHeaders,
           durationMs: Math.round(performance.now() - start),
         });
       }
@@ -116,17 +142,22 @@ export function useStoryStream(conversationId: number, settings?: StorySettings)
 
     const endpoint = `/api/openrouter/conversations/${conversationId}/ai-turn`;
     const requestBody = buildOptionsBody(settings);
+    const reqHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
     const start = performance.now();
     let status: number | null = null;
     let responseJson: unknown = null;
+    let responseHeaders: Record<string, string> | undefined;
 
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify(requestBody),
       });
       status = response.status;
+      responseHeaders = headersToRecord(response.headers);
       responseJson = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -144,19 +175,23 @@ export function useStoryStream(conversationId: number, settings?: StorySettings)
     } finally {
       setIsTyping(false);
       invalidate();
-      // Extract model info from response so the debug panel can show
-      // both the requested alias and the actual resolved model name.
       const res = responseJson as {
         requestedModel?: string;
         actualModel?: string;
         message?: { model?: string };
+        request?: unknown;
+        response?: unknown;
       } | null;
       emitDebug({
         endpoint,
         method: "POST",
         status,
         request: requestBody,
+        requestHeaders: reqHeaders,
         response: responseJson,
+        responseHeaders,
+        openrouterRequest: res?.request,
+        openrouterResponse: res?.response,
         requestedModel:
           res?.requestedModel ??
           (requestBody as { model?: string }).model ??

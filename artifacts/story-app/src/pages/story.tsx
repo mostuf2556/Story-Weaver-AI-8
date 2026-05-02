@@ -10,7 +10,7 @@ import {
   getListOpenrouterMessagesQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useStoryStream } from "@/hooks/use-story-stream";
+import { useStoryStream, emitDebug } from "@/hooks/use-story-stream";
 import { useSettings } from "@/hooks/use-settings";
 import { useVoice } from "@/hooks/use-voice";
 import { useSounds } from "@/hooks/use-sounds";
@@ -54,6 +54,7 @@ import {
   StopCircle,
   Zap,
   ZapOff,
+  Bug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -177,6 +178,20 @@ export default function Story() {
 
   const voice = useVoice(settings.blindMode);
   const { playSound } = useSounds();
+
+  // Debug panel — driven by config.json `debugToggle` field (default true)
+  const [debugToggle, setDebugToggle] = useState(true);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  useEffect(() => {
+    fetch("/api/openrouter/config")
+      .then((r) => r.json())
+      .then((cfg: { debugToggle?: boolean }) => {
+        setDebugToggle(cfg.debugToggle !== false);
+      })
+      .catch(() => {
+        /* keep default true if config fetch fails */
+      });
+  }, []);
 
   // Inline editing
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -878,29 +893,66 @@ export default function Story() {
   const handleRegenerateMessage = async (messageId: number) => {
     if (regeneratingMsgId !== null) return;
     setRegeneratingMsgId(messageId);
+    const endpoint = `/api/openrouter/messages/${messageId}/regenerate`;
+    const requestBody = {
+      model: settings.model || "openrouter/free",
+      maxTokens: settings.maxTokens,
+      temperature: settings.temperature,
+      ...(settings.apiKey ? { apiKey: settings.apiKey } : {}),
+      ...(settings.apiUrl ? { apiUrl: settings.apiUrl } : {}),
+      ...(settings.stt.aiLanguage ? { language: settings.stt.aiLanguage } : {}),
+    };
+    const reqHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    const start = performance.now();
+    let status: number | null = null;
+    let responseJson: unknown = null;
+    let responseHeaders: Record<string, string> | undefined;
     try {
-      await regenerateMessage.mutateAsync({
-        messageId,
-        data: {
-          model: settings.model || "openrouter/free",
-          maxTokens: settings.maxTokens,
-          temperature: settings.temperature,
-          ...(settings.apiKey ? { apiKey: settings.apiKey } : {}),
-          ...(settings.apiUrl ? { apiUrl: settings.apiUrl } : {}),
-          ...(settings.stt.aiLanguage
-            ? { language: settings.stt.aiLanguage }
-            : {}),
-        },
+      const raw = await fetch(endpoint, {
+        method: "POST",
+        headers: reqHeaders,
+        body: JSON.stringify(requestBody),
       });
+      status = raw.status;
+      responseHeaders = {};
+      raw.headers.forEach((v, k) => { responseHeaders![k] = v; });
+      responseJson = await raw.json().catch(() => null);
+      if (!raw.ok) {
+        const msg =
+          (responseJson as { error?: string } | null)?.error ??
+          `Server error ${raw.status}`;
+        throw new Error(msg);
+      }
       queryClient.invalidateQueries({
         queryKey: getListOpenrouterMessagesQueryKey(id),
       });
     } catch (err) {
       console.error("Regenerate failed:", err);
       playSound("error");
-      // Surface the failure so the user sees more than just a beep.
       setActionError(formatActionError("Regenerate failed", err));
     } finally {
+      const res = responseJson as {
+        requestedModel?: string;
+        actualModel?: string;
+        request?: unknown;
+        response?: unknown;
+      } | null;
+      emitDebug({
+        endpoint,
+        method: "POST",
+        status,
+        request: requestBody,
+        requestHeaders: reqHeaders,
+        response: responseJson,
+        responseHeaders,
+        openrouterRequest: res?.request,
+        openrouterResponse: res?.response,
+        requestedModel: res?.requestedModel ?? requestBody.model,
+        actualModel: res?.actualModel,
+        durationMs: Math.round(performance.now() - start),
+      });
       setRegeneratingMsgId(null);
     }
   };
@@ -1224,6 +1276,23 @@ export default function Story() {
             )}
           </Button>
 
+          {debugToggle && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8",
+                debugPanelOpen
+                  ? "text-amber-400 bg-amber-400/10"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setDebugPanelOpen((v) => !v)}
+              aria-label={debugPanelOpen ? "Close debug panel" : "Open debug panel"}
+              title="Debug panel (requests & responses)"
+            >
+              <Bug className="w-4 h-4" />
+            </Button>
+          )}
           <ThemeToggle />
           <TtsSpeedDialog settings={settings} onSave={updateSettings} />
           <TtsVoiceDialog settings={settings} onSave={updateSettings} />
@@ -1610,7 +1679,10 @@ export default function Story() {
         )}
       </div>
 
-      <DebugPanel />
+      <DebugPanel
+        open={debugPanelOpen}
+        onClose={() => setDebugPanelOpen(false)}
+      />
     </div>
   );
 }
