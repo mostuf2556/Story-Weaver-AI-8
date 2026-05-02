@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from "react";
 import { useRoute, Link } from "wouter";
 import {
   useGetOpenrouterConversation,
@@ -8,6 +8,7 @@ import {
   useRegenerateOpenrouterMessage,
   getGetOpenrouterConversationQueryKey,
   getListOpenrouterMessagesQueryKey,
+  type OpenrouterMessage,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useStoryStream, emitDebug } from "@/hooks/use-story-stream";
@@ -56,7 +57,19 @@ import {
   Zap,
   ZapOff,
   Bug,
+  Settings,
+  ImageIcon,
+  Merge,
+  ChevronRight,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getT } from "@/lib/i18n";
 import { I18nProvider } from "@/lib/i18n-context";
@@ -96,14 +109,16 @@ function formatActionError(prefix: string, err: unknown): string {
  * Render a message body word-by-word so that during TTS playback we can
  * highlight whichever word the engine is currently announcing.
  *
- * The split (`/(\s+)/`) preserves whitespace runs as separate tokens, and
- * `whitespace-pre-wrap` on the wrapper keeps the original visual spacing
- * (newlines, multiple spaces) intact — so when no word is highlighted the
- * output is visually identical to the previous plain `{msg.content}`
- * rendering.
+ * Tokens are split preserving whitespace runs so `whitespace-pre-wrap` on
+ * the wrapper keeps original visual spacing intact.
  *
- * `highlightWord` is the index of the word (0-based, ignoring whitespace
- * runs) that should be highlighted, or `null` for no highlight.
+ * Words are grouped into sentence "buckets" by detecting sentence-ending
+ * punctuation (.!?). The bucket containing the active word gets a subtle
+ * blue outline so the reader can see which sentence is being spoken — the
+ * "square around the current sentence" effect (item 5).
+ *
+ * `highlightWord` is the 0-based word index (ignoring whitespace runs)
+ * that should be highlighted, or `null` for no highlight.
  */
 function MessageBody({
   text,
@@ -112,25 +127,85 @@ function MessageBody({
   text: string;
   highlightWord: number | null;
 }) {
-  const tokens = useMemo(() => text.split(/(\s+)/), [text]);
-  let wordIdx = -1;
+  // Group tokens into sentence buckets.
+  // A new bucket starts after every token that ends with . ! ? (possibly
+  // followed by quotes/brackets), so multi-sentence paragraphs each have
+  // their own container that can be highlighted independently.
+  const buckets = useMemo(() => {
+    const allTokens = text.split(/(\s+)/);
+    const groups: Array<{
+      tokens: Array<{ tok: string; wordIdx: number | null }>;
+      startWord: number;
+      endWord: number;
+    }> = [];
+    let current: (typeof groups)[0] = { tokens: [], startWord: 0, endWord: -1 };
+    let wordCount = 0;
+
+    for (const tok of allTokens) {
+      if (tok.length === 0) continue;
+      if (/^\s+$/.test(tok)) {
+        current.tokens.push({ tok, wordIdx: null });
+        continue;
+      }
+      const wIdx = wordCount++;
+      current.tokens.push({ tok, wordIdx: wIdx });
+      current.endWord = wIdx;
+
+      // Sentence boundary: token ends with . ! ? (optionally followed by " ' ) ] )
+      if (/[.!?؟]+['")\]]*$/.test(tok)) {
+        groups.push(current);
+        current = { tokens: [], startWord: wordCount, endWord: wordCount };
+      }
+    }
+
+    if (current.tokens.length > 0) {
+      groups.push(current);
+    }
+
+    // If nothing was grouped (no punctuation), the whole text is one bucket
+    return groups;
+  }, [text]);
+
+  // Derive active-sentence index from the active-word index
+  const activeBucketIdx = useMemo(() => {
+    if (highlightWord === null) return null;
+    for (let i = 0; i < buckets.length; i++) {
+      if (highlightWord >= buckets[i].startWord && highlightWord <= buckets[i].endWord) {
+        return i;
+      }
+    }
+    return null;
+  }, [highlightWord, buckets]);
+
   return (
     <div className="whitespace-pre-wrap" dir="auto">
-      {tokens.map((tok, i) => {
-        if (tok.length === 0) return null;
-        if (/^\s+$/.test(tok)) return <span key={i}>{tok}</span>;
-        wordIdx++;
-        const isActive = wordIdx === highlightWord;
+      {buckets.map((bucket, bIdx) => {
+        const isSentenceActive = bIdx === activeBucketIdx && activeBucketIdx !== null;
         return (
           <span
-            key={i}
+            key={bIdx}
             className={cn(
-              "transition-colors duration-100",
-              isActive &&
-                "bg-amber-300/50 dark:bg-amber-400/40 text-foreground rounded px-0.5",
+              "transition-colors duration-200",
+              isSentenceActive &&
+                "bg-sky-100/60 dark:bg-sky-900/30 ring-1 ring-sky-400/50 dark:ring-sky-600/50 rounded-sm",
             )}
           >
-            {tok}
+            {bucket.tokens.map(({ tok, wordIdx: wIdx }, tIdx) => {
+              if (wIdx === null) return <span key={tIdx}>{tok}</span>;
+              const isWordActive = wIdx === highlightWord;
+              return (
+                <span
+                  key={tIdx}
+                  className={cn(
+                    "transition-colors duration-100",
+                    isWordActive &&
+                      "bg-amber-300/60 dark:bg-amber-400/50 text-foreground rounded px-0.5",
+                  )}
+                >
+                  {tok}
+                </span>
+              );
+            })}
           </span>
         );
       })}
@@ -395,6 +470,7 @@ export default function Story() {
   // as `streamError` so the user can actually see what failed.
   const [actionError, setActionError] = useState<string | null>(null);
   const displayedError = streamError ?? actionError;
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const stopPlayingStory = useCallback(() => {
     isPlayingStoryRef.current = false;
@@ -421,6 +497,8 @@ export default function Story() {
     try {
       for (const msg of messages) {
         if (!isPlayingStoryRef.current) break;
+        // Skip image-only messages — they have no text to speak.
+        if (msg.content.startsWith("[STORYIMG]:")) continue;
         const units = await buildPlayUnits(msg);
         if (units.length === 0) continue;
         if (!isPlayingStoryRef.current) break;
@@ -848,6 +926,68 @@ export default function Story() {
     setRefreshTick((t) => t + 1);
   }, [voice, clearIntervalRetry]);
 
+  // Merge two adjacent messages into one: update the first with combined
+  // content then delete the second so the story timeline stays intact.
+  const handleMergeMessages = useCallback(
+    async (
+      first: { id: number; content: string },
+      second: { id: number; content: string },
+    ) => {
+      try {
+        const merged = first.content.trimEnd() + "\n\n" + second.content.trimStart();
+        await updateMessage.mutateAsync({
+          messageId: first.id,
+          data: { content: merged },
+        });
+        await deleteMessage.mutateAsync({ messageId: second.id });
+        queryClient.invalidateQueries({
+          queryKey: getListOpenrouterMessagesQueryKey(id),
+        });
+      } catch (err) {
+        console.error("Merge failed:", err);
+        playSound("error");
+        setActionError(formatActionError(t("story.errMerge"), err));
+      }
+    },
+    [updateMessage, deleteMessage, queryClient, id, playSound, t],
+  );
+
+  // Generate an AI illustration from the current story context.
+  const handleGenerateImage = useCallback(async () => {
+    if (!id || isGeneratingImage || isTyping) return;
+    setIsGeneratingImage(true);
+    try {
+      const requestBody = {
+        ...(settings.apiKey ? { apiKey: settings.apiKey } : {}),
+        ...(settings.apiUrl ? { apiUrl: settings.apiUrl } : {}),
+        model: settings.model || "openrouter/free",
+      };
+      const raw = await fetch(
+        `/api/openrouter/conversations/${id}/generate-image`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        },
+      );
+      if (!raw.ok) {
+        const errData = (await raw.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(errData?.error ?? `Server error ${raw.status}`);
+      }
+      queryClient.invalidateQueries({
+        queryKey: getListOpenrouterMessagesQueryKey(id),
+      });
+    } catch (err) {
+      console.error("Image generation failed:", err);
+      playSound("error");
+      setActionError(formatActionError(t("story.errGenerateImage"), err));
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  }, [id, isGeneratingImage, isTyping, settings, queryClient, playSound, t]);
+
   // Inline edit handlers
   const startEdit = (msgId: number, content: string) => {
     setEditingId(msgId);
@@ -1099,19 +1239,26 @@ export default function Story() {
             {conversation.title}
           </h1>
         </div>
-        <div className="flex items-center gap-0.5 overflow-x-auto [&::-webkit-scrollbar]:hidden shrink-0 max-w-[58vw] sm:max-w-none">
+        {/* ── Right toolbar: kept compact so it never overflows the header.
+            Frequently-toggled controls are always visible; all settings
+            dialogs live inside the Sheet so the bar stays ≤5 icons wide. ── */}
+        <div className="flex items-center gap-0.5 shrink-0">
+
+          {/* Status pills — shown only when the voice engine is active */}
           {isListening && !isNoResponse && (
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/15 border border-blue-400/30">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/15 border border-blue-400/30 me-1">
               <Mic className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-              <span className="text-xs text-blue-400 font-sans font-medium">{t("story.listeningIndicator")}</span>
+              <span className="text-xs text-blue-400 font-sans font-medium hidden sm:inline">{t("story.listeningIndicator")}</span>
             </div>
           )}
           {isNoResponse && (
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-400/30">
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 me-1">
               <Mic className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span className="text-xs text-amber-400 font-sans font-medium">{t("story.waitingIndicator")}</span>
+              <span className="text-xs text-amber-400 font-sans font-medium hidden sm:inline">{t("story.waitingIndicator")}</span>
             </div>
           )}
+
+          {/* Stop speaking (blind mode only) */}
           {settings.blindMode && isSpeaking && (
             <Button
               variant="ghost"
@@ -1125,7 +1272,7 @@ export default function Story() {
             </Button>
           )}
 
-          {/* Refresh listening — only useful in blind mode */}
+          {/* Refresh listening (blind mode only) */}
           {settings.blindMode && (
             <Button
               variant="ghost"
@@ -1140,7 +1287,7 @@ export default function Story() {
             </Button>
           )}
 
-          {/* Quick toggle: Blind mode */}
+          {/* Blind mode toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -1149,56 +1296,16 @@ export default function Story() {
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground",
             )}
-            onClick={() =>
-              updateSettings({ blindMode: !settings.blindMode })
-            }
+            onClick={() => updateSettings({ blindMode: !settings.blindMode })}
             aria-label={settings.blindMode ? t("story.disableBlindMode") : t("story.enableBlindMode")}
             aria-pressed={settings.blindMode}
             title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
             data-testid="button-toggle-blind-mode"
           >
-            {settings.blindMode ? (
-              <Ear className="w-5 h-5" />
-            ) : (
-              <EarOff className="w-5 h-5" />
-            )}
+            {settings.blindMode ? <Ear className="w-5 h-5" /> : <EarOff className="w-5 h-5" />}
           </Button>
 
-          {/* Quick toggle: Play back your words */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              settings.playUserTranscription
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            onClick={() =>
-              updateSettings({
-                playUserTranscription: !settings.playUserTranscription,
-              })
-            }
-            aria-label={
-              settings.playUserTranscription
-                ? t("story.disablePlayback")
-                : t("story.enablePlayback")
-            }
-            aria-pressed={settings.playUserTranscription}
-            title={
-              settings.playUserTranscription
-                ? t("story.playbackOn")
-                : t("story.playbackOff")
-            }
-            data-testid="button-toggle-playback"
-          >
-            {settings.playUserTranscription ? (
-              <Volume2 className="w-5 h-5" />
-            ) : (
-              <VolumeX className="w-5 h-5" />
-            )}
-          </Button>
-
-          {/* Quick toggle: Manual AI turn */}
+          {/* Manual / auto AI turn toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -1208,125 +1315,196 @@ export default function Story() {
                 : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() =>
-              updateSettings({
-                gameMode: settings.gameMode === "manual" ? "auto" : "manual",
-              })
+              updateSettings({ gameMode: settings.gameMode === "manual" ? "auto" : "manual" })
             }
-            aria-label={
-              settings.gameMode === "manual"
-                ? t("story.switchToAutoAi")
-                : t("story.switchToManualAi")
-            }
+            aria-label={settings.gameMode === "manual" ? t("story.switchToAutoAi") : t("story.switchToManualAi")}
             aria-pressed={settings.gameMode === "manual"}
-            title={
-              settings.gameMode === "manual"
-                ? t("story.aiModeManual")
-                : t("story.aiModeAuto")
-            }
+            title={settings.gameMode === "manual" ? t("story.aiModeManual") : t("story.aiModeAuto")}
             data-testid="button-toggle-game-mode"
           >
-            {settings.gameMode === "manual" ? (
-              <ZapOff className="w-5 h-5" />
-            ) : (
-              <Zap className="w-5 h-5" />
-            )}
+            {settings.gameMode === "manual" ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
           </Button>
 
-          {/* Quick STT (speech recognition) language picker */}
-          <SttLanguageSwitcher
-            label={t("story.labelYou")}
-            value={settings.stt.language}
-            onChange={(lang) =>
-              updateSettings({ stt: { ...settings.stt, language: lang } })
-            }
-          />
-
-          {/* Quick AI response language picker — controls the BCP-47
-              `language` field sent on every AI completion request. */}
-          <SttLanguageSwitcher
-            variant="ai"
-            label={t("story.labelAI")}
-            value={settings.stt.aiLanguage}
-            onChange={(lang) =>
-              updateSettings({ stt: { ...settings.stt, aiLanguage: lang } })
-            }
-          />
-
-          {/* On-screen translation languages (multi-select). Each selected
-              BCP-47 code renders its own translated line below every
-              paragraph. The TTS Play Order dialog (next icon) governs
-              which of these are also spoken and in what order. */}
-          <ViewLanguagesSwitcher
-            label={t("story.labelView")}
-            value={settings.viewLanguages}
-            onChange={(langs) =>
-              updateSettings({
-                viewLanguages: langs,
-                // Keep the play queue in step with the visible languages —
-                // newly picked languages auto-play, removed ones drop out.
-                ttsPlayOrder: syncPlayOrderForView(
-                  settings.ttsPlayOrder,
-                  langs,
-                ),
-              })
-            }
-          />
-
-          {/* TTS playback order — opens a dialog where the user can pick
-              which items (original + translations) get spoken and in
-              what sequence. */}
-          <TtsPlayOrderDialog
-            settings={settings}
-            onSave={(patch: Partial<StorySettings>) => updateSettings(patch)}
-          />
-
-          {/* Play / Stop the entire story — reads each saved message in
-              its own configured language, at the per-language playback
-              rate set in the speed dialog. Disabled until messages load. */}
+          {/* Play / Stop the entire story */}
           <Button
             variant="ghost"
             size="icon"
             onClick={handlePlayStory}
             disabled={!messages || messages.length === 0}
             className={cn(
-              isPlayingStory
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground",
+              isPlayingStory ? "text-primary" : "text-muted-foreground hover:text-foreground",
             )}
             aria-label={isPlayingStory ? t("story.stopStoryAria") : t("story.playStoryAria")}
             aria-pressed={isPlayingStory}
             title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
             data-testid="button-play-story"
           >
-            {isPlayingStory ? (
-              <StopCircle className="w-5 h-5" />
-            ) : (
-              <Play className="w-5 h-5" />
-            )}
+            {isPlayingStory ? <StopCircle className="w-5 h-5" /> : <Play className="w-5 h-5" />}
           </Button>
 
-          {debugToggle && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8",
-                debugPanelOpen
-                  ? "text-amber-400 bg-amber-400/10"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setDebugPanelOpen((v) => !v)}
-              aria-label={debugPanelOpen ? t("story.debugClose") : t("story.debugOpen")}
-              title="Debug panel (requests & responses)"
-            >
-              <Bug className="w-4 h-4" />
-            </Button>
-          )}
-          <ThemeToggle />
-          <TtsSpeedDialog settings={settings} onSave={updateSettings} />
-          <TtsVoiceDialog settings={settings} onSave={updateSettings} />
-          <SttSettingsDialog settings={settings} onSave={updateSettings} />
-          <OpenrouterSettingsDialog settings={settings} onSave={updateSettings} />
+          {/* Settings Sheet — all settings dialogs consolidated here so the
+              toolbar stays compact and the header never overflows. */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground"
+                aria-label={t("story.storySettings")}
+                title={t("story.storySettings")}
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-80 overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle style={{ fontFamily: "'Nunito', sans-serif" }}>
+                  {t("story.storySettings")}
+                </SheetTitle>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-5">
+
+                {/* ── Languages ── */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    {t("story.settingsSectionLanguages")}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{t("story.labelYou")}</span>
+                      <SttLanguageSwitcher
+                        label={t("story.labelYou")}
+                        value={settings.stt.language}
+                        onChange={(lang) =>
+                          updateSettings({ stt: { ...settings.stt, language: lang } })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{t("story.labelAI")}</span>
+                      <SttLanguageSwitcher
+                        variant="ai"
+                        label={t("story.labelAI")}
+                        value={settings.stt.aiLanguage}
+                        onChange={(lang) =>
+                          updateSettings({ stt: { ...settings.stt, aiLanguage: lang } })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{t("story.labelView")}</span>
+                      <ViewLanguagesSwitcher
+                        label={t("story.labelView")}
+                        value={settings.viewLanguages}
+                        onChange={(langs) =>
+                          updateSettings({
+                            viewLanguages: langs,
+                            ttsPlayOrder: syncPlayOrderForView(settings.ttsPlayOrder, langs),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* ── Playback ── */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    {t("story.settingsSectionPlay")}
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {/* Play-back-your-words toggle */}
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-sm">{t("story.enablePlayback")}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8",
+                          settings.playUserTranscription
+                            ? "text-primary"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                        onClick={() =>
+                          updateSettings({ playUserTranscription: !settings.playUserTranscription })
+                        }
+                        aria-pressed={settings.playUserTranscription}
+                        data-testid="button-toggle-playback"
+                      >
+                        {settings.playUserTranscription ? (
+                          <Volume2 className="w-4 h-4" />
+                        ) : (
+                          <VolumeX className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <TtsPlayOrderDialog
+                      settings={settings}
+                      onSave={(patch: Partial<StorySettings>) => updateSettings(patch)}
+                    />
+                    <TtsSpeedDialog settings={settings} onSave={updateSettings} />
+                    <TtsVoiceDialog settings={settings} onSave={updateSettings} />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* ── Voice & Speech ── */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    {t("story.settingsSectionVoice")}
+                  </p>
+                  <SttSettingsDialog settings={settings} onSave={updateSettings} />
+                </div>
+
+                <Separator />
+
+                {/* ── AI & Model ── */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    {t("story.settingsSectionAI")}
+                  </p>
+                  <OpenrouterSettingsDialog settings={settings} onSave={updateSettings} />
+                </div>
+
+                <Separator />
+
+                {/* ── Appearance ── */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    {t("story.settingsSectionAppearance")}
+                  </p>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm">Theme</span>
+                    <ThemeToggle />
+                  </div>
+                  {debugToggle && (
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-sm">Debug panel</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-8 w-8",
+                          debugPanelOpen
+                            ? "text-amber-400 bg-amber-400/10"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                        onClick={() => setDebugPanelOpen((v) => !v)}
+                        aria-label={debugPanelOpen ? t("story.debugClose") : t("story.debugOpen")}
+                      >
+                        <Bug className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 
@@ -1382,215 +1560,250 @@ export default function Story() {
           </div>
         )}
 
-        {messages
-          ?.filter((msg) => msg.content.trim() !== "")
-          .map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 ps-4 border-s-4 rounded-e-sm transition-colors",
-                msg.role === "assistant"
-                  ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
-                  : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
-              )}
-            >
-              <div
-                className={cn(
-                  "absolute -start-8 top-1.5 opacity-0 group-hover:opacity-50 transition-opacity",
-                  msg.role === "assistant"
-                    ? "text-secondary-foreground"
-                    : "text-primary"
-                )}
-              >
-                {msg.role === "assistant" ? (
-                  <Sparkles className="w-4 h-4" />
-                ) : (
-                  <PenLine className="w-4 h-4" />
-                )}
-              </div>
+        {(() => {
+          const visibleMessages: OpenrouterMessage[] = messages?.filter((msg: OpenrouterMessage) => msg.content.trim() !== "") ?? [];
+          return visibleMessages.map((msg: OpenrouterMessage, idx: number) => {
+            const isImg = msg.content.startsWith("[STORYIMG]:");
+            const imgUrl = isImg ? msg.content.slice("[STORYIMG]:".length) : null;
+            const nextMsg = idx < visibleMessages.length - 1 ? visibleMessages[idx + 1] : null;
+            // Only offer merge between two adjacent non-image text messages
+            const canMerge = nextMsg && !isImg && !nextMsg.content.startsWith("[STORYIMG]:");
 
-              {editingId === msg.id ? (
-                <div className="space-y-2">
-                  <Textarea
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    autoFocus
-                    className="min-h-[100px] resize-none font-serif text-lg leading-relaxed bg-background/80 border-primary/40 focus-visible:ring-primary/50"
-                    dir="auto"
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") cancelEdit();
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                        saveEdit(msg.id);
-                    }}
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={cancelEdit}
-                      className="h-8 text-muted-foreground hover:text-foreground font-sans text-xs"
-                    >
-                      <X className="w-3.5 h-3.5 mr-1" />
-                      {t("story.cancelEdit")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => saveEdit(msg.id)}
-                      disabled={!editDraft.trim() || updateMessage.isPending}
-                      className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-sans text-xs"
-                    >
-                      <Check className="w-3.5 h-3.5 mr-1" />
-                      {t("story.saveEdit")}
-                    </Button>
+            return (
+              <Fragment key={msg.id}>
+                {/* ── Image message: render as an inline illustration ── */}
+                {isImg ? (
+                  <div className="group relative animate-in fade-in duration-700 flex flex-col items-center gap-1 my-2">
+                    <img
+                      src={imgUrl!}
+                      alt={t("story.imageAlt")}
+                      className="rounded-xl max-w-full max-h-80 object-contain shadow-md border border-border/30"
+                    />
+                    <div className="absolute top-2 end-2 opacity-0 group-hover:opacity-70 transition-opacity">
+                      <button
+                        onClick={() => handleDeleteMessage(msg.id)}
+                        disabled={deleteMessage.isPending}
+                        aria-label={t("story.deletePassage")}
+                        className="text-muted-foreground hover:text-destructive p-1 rounded bg-background/80"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="relative">
-                  {/*
-                    Wrap the original-text body in a clickable box so
-                    tapping the paragraph starts playback from the
-                    original (skipping any translations earlier in the
-                    queue). When the original is the live unit it gets
-                    a colored border that matches the translated-line
-                    treatment, so the user can always see what's audible.
-                  */}
+                ) : (
+                  /* ── Text message ── */
                   <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handlePlayMessage(msg, PLAY_ORIGINAL)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handlePlayMessage(msg, PLAY_ORIGINAL);
-                      }
-                    }}
-                    aria-label={t("story.playPassage")}
-                    data-testid={`message-original-${msg.id}`}
-                    data-playing={
-                      playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
-                        ? "true"
-                        : undefined
-                    }
                     className={cn(
-                      "cursor-pointer rounded-e border-s-2 ps-3 -ms-3 transition-colors hover:bg-muted/30",
-                      playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/40"
-                        : "border-transparent",
+                      "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 ps-4 border-s-4 rounded-e-sm transition-colors",
+                      msg.role === "assistant"
+                        ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
+                        : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
                     )}
                   >
-                    <MessageBody
-                      text={msg.content}
-                      highlightWord={
-                        playingMsgId === msg.id ? currentWordIdx : null
-                      }
-                    />
-                  </div>
-                  {settings.viewLanguages.map((lang) => (
-                    <TranslatedLine
-                      key={lang}
-                      text={msg.content}
-                      toLang={lang}
-                      isPlaying={
-                        playingMsgId === msg.id && playingItem === lang
-                      }
-                      onClick={() => handlePlayMessage(msg, lang)}
-                    />
-                  ))}
-                  {/*
-                    Provenance badge: show the BCP-47 language for every
-                    message and, for AI-authored messages, also the model
-                    that generated this paragraph. Pulled from the row's
-                    own columns so historical attribution stays accurate
-                    even after the active model is changed mid-story.
-                  */}
-                  {(msg.language || msg.model) && (
                     <div
-                      className="mt-1 flex flex-wrap gap-1 text-[10px] font-sans text-muted-foreground/70 select-none"
-                      data-testid={`message-meta-${msg.id}`}
-                    >
-                      {msg.language && (
-                        <span
-                          className="px-1.5 py-0.5 rounded bg-muted/40"
-                          data-testid={`message-language-${msg.id}`}
-                          title={t("story.passageLanguageTitle")}
-                        >
-                          {msg.language}
-                        </span>
+                      className={cn(
+                        "absolute -start-8 top-1.5 opacity-0 group-hover:opacity-50 transition-opacity",
+                        msg.role === "assistant"
+                          ? "text-secondary-foreground"
+                          : "text-primary"
                       )}
-                      {msg.role === "assistant" && msg.model && (
-                        <span
-                          className="px-1.5 py-0.5 rounded bg-muted/40"
-                          data-testid={`message-model-${msg.id}`}
-                          title={t("story.passageModelTitle")}
-                        >
-                          {msg.model}
-                        </span>
+                    >
+                      {msg.role === "assistant" ? (
+                        <Sparkles className="w-4 h-4" />
+                      ) : (
+                        <PenLine className="w-4 h-4" />
                       )}
                     </div>
-                  )}
-                  <div className="absolute -end-8 top-0.5 flex flex-row gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
+
+                    {editingId === msg.id ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          autoFocus
+                          className="min-h-[100px] resize-none font-serif text-lg leading-relaxed bg-background/80 border-primary/40 focus-visible:ring-primary/50"
+                          dir="auto"
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") cancelEdit();
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                              saveEdit(msg.id);
+                          }}
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={cancelEdit}
+                            className="h-8 text-muted-foreground hover:text-foreground font-sans text-xs"
+                          >
+                            <X className="w-3.5 h-3.5 mr-1" />
+                            {t("story.cancelEdit")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => saveEdit(msg.id)}
+                            disabled={!editDraft.trim() || updateMessage.isPending}
+                            className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-sans text-xs"
+                          >
+                            <Check className="w-3.5 h-3.5 mr-1" />
+                            {t("story.saveEdit")}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => handlePlayMessage(msg, PLAY_ORIGINAL)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handlePlayMessage(msg, PLAY_ORIGINAL);
+                            }
+                          }}
+                          aria-label={t("story.playPassage")}
+                          data-testid={`message-original-${msg.id}`}
+                          data-playing={
+                            playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
+                              ? "true"
+                              : undefined
+                          }
+                          className={cn(
+                            "cursor-pointer rounded-e border-s-2 ps-3 -ms-3 transition-colors hover:bg-muted/30",
+                            playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
+                              ? "border-primary bg-primary/5 ring-1 ring-primary/40"
+                              : "border-transparent",
+                          )}
+                        >
+                          <MessageBody
+                            text={msg.content}
+                            highlightWord={
+                              playingMsgId === msg.id ? currentWordIdx : null
+                            }
+                          />
+                        </div>
+                        {settings.viewLanguages.map((lang) => (
+                          <TranslatedLine
+                            key={lang}
+                            text={msg.content}
+                            toLang={lang}
+                            isPlaying={
+                              playingMsgId === msg.id && playingItem === lang
+                            }
+                            onClick={() => handlePlayMessage(msg, lang)}
+                          />
+                        ))}
+                        {(msg.language || msg.model) && (
+                          <div
+                            className="mt-1 flex flex-wrap gap-1 text-[10px] font-sans text-muted-foreground/70 select-none"
+                            data-testid={`message-meta-${msg.id}`}
+                          >
+                            {msg.language && (
+                              <span
+                                className="px-1.5 py-0.5 rounded bg-muted/40"
+                                data-testid={`message-language-${msg.id}`}
+                                title={t("story.passageLanguageTitle")}
+                              >
+                                {msg.language}
+                              </span>
+                            )}
+                            {msg.role === "assistant" && msg.model && (
+                              <span
+                                className="px-1.5 py-0.5 rounded bg-muted/40"
+                                data-testid={`message-model-${msg.id}`}
+                                title={t("story.passageModelTitle")}
+                              >
+                                {msg.model}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div className="absolute -end-8 top-0.5 flex flex-row gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handlePlayMessage(msg)}
+                            aria-label={
+                              playingMsgId === msg.id
+                                ? t("story.stopReadPassage")
+                                : t("story.readPassage")
+                            }
+                            title={
+                              playingMsgId === msg.id
+                                ? t("story.stopReadPassage")
+                                : t("story.readPassage")
+                            }
+                            data-testid={`button-play-message-${msg.id}`}
+                            className={cn(
+                              "p-1 rounded",
+                              playingMsgId === msg.id
+                                ? "text-primary"
+                                : "text-muted-foreground hover:text-primary",
+                            )}
+                          >
+                            {playingMsgId === msg.id ? (
+                              <StopCircle className="w-5 h-5" />
+                            ) : (
+                              <Volume2 className="w-5 h-5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => startEdit(msg.id, msg.content)}
+                            aria-label={t("story.editPassage")}
+                            data-testid={`button-edit-message-${msg.id}`}
+                            className="text-muted-foreground hover:text-primary p-1 rounded"
+                          >
+                            <Pencil className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleRegenerateMessage(msg.id)}
+                            disabled={regeneratingMsgId !== null}
+                            aria-label={t("story.regeneratePassage")}
+                            title={t("story.regenerateTitle")}
+                            data-testid={`button-regenerate-message-${msg.id}`}
+                            className="text-muted-foreground hover:text-primary p-1 rounded disabled:opacity-30"
+                          >
+                            {regeneratingMsgId === msg.id ? (
+                              <RefreshCw className="w-5 h-5 animate-spin" />
+                            ) : (
+                              <Wand2 className="w-5 h-5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMessage(msg.id)}
+                            disabled={deleteMessage.isPending}
+                            aria-label={t("story.deletePassage")}
+                            data-testid={`button-delete-message-${msg.id}`}
+                            className="text-muted-foreground hover:text-destructive p-1 rounded disabled:opacity-30"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Merge button between adjacent text paragraphs ── */}
+                {canMerge && (
+                  <div className="flex items-center justify-center opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity h-4 -my-1 group/merge">
                     <button
-                      onClick={() => handlePlayMessage(msg)}
-                      aria-label={
-                        playingMsgId === msg.id
-                          ? t("story.stopReadPassage")
-                          : t("story.readPassage")
-                      }
-                      title={
-                        playingMsgId === msg.id
-                          ? t("story.stopReadPassage")
-                          : t("story.readPassage")
-                      }
-                      data-testid={`button-play-message-${msg.id}`}
-                      className={cn(
-                        "p-1 rounded",
-                        playingMsgId === msg.id
-                          ? "text-primary"
-                          : "text-muted-foreground hover:text-primary",
+                      onClick={() => handleMergeMessages(
+                        { id: msg.id, content: msg.content },
+                        { id: nextMsg.id, content: nextMsg.content },
                       )}
+                      aria-label={t("story.mergeWithNext")}
+                      title={t("story.mergeWithNext")}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-sans text-muted-foreground/60 hover:text-primary hover:bg-primary/10 border border-dashed border-transparent hover:border-primary/30 transition-all"
                     >
-                      {playingMsgId === msg.id ? (
-                        <StopCircle className="w-5 h-5" />
-                      ) : (
-                        <Volume2 className="w-5 h-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => startEdit(msg.id, msg.content)}
-                      aria-label={t("story.editPassage")}
-                      data-testid={`button-edit-message-${msg.id}`}
-                      className="text-muted-foreground hover:text-primary p-1 rounded"
-                    >
-                      <Pencil className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => handleRegenerateMessage(msg.id)}
-                      disabled={regeneratingMsgId !== null}
-                      aria-label={t("story.regeneratePassage")}
-                      title={t("story.regenerateTitle")}
-                      data-testid={`button-regenerate-message-${msg.id}`}
-                      className="text-muted-foreground hover:text-primary p-1 rounded disabled:opacity-30"
-                    >
-                      {regeneratingMsgId === msg.id ? (
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-5 h-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteMessage(msg.id)}
-                      disabled={deleteMessage.isPending}
-                      aria-label={t("story.deletePassage")}
-                      data-testid={`button-delete-message-${msg.id}`}
-                      className="text-muted-foreground hover:text-destructive p-1 rounded disabled:opacity-30"
-                    >
-                      <Trash2 className="w-5 h-5" />
+                      <Merge className="w-3 h-3" />
+                      <ChevronRight className="w-2.5 h-2.5 -mx-0.5" />
                     </button>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </Fragment>
+            );
+          });
+        })()}
 
         {/* AI is composing (non-streaming) */}
         {isTyping && (
@@ -1678,6 +1891,23 @@ export default function Story() {
               </div>
             )}
             <div className="absolute bottom-3 end-3 flex gap-1.5">
+              {/* AI Illustration button */}
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={handleGenerateImage}
+                disabled={isTyping || isGeneratingImage || !messages || messages.filter((m: OpenrouterMessage) => !m.content.startsWith("[STORYIMG]:") && m.content.trim() !== "").length === 0}
+                className={cn(
+                  "h-9 w-9 sm:h-10 sm:w-10 rounded-full transition-all",
+                  isGeneratingImage
+                    ? "text-violet-400 border-violet-400/50 animate-pulse"
+                    : "text-muted-foreground hover:text-violet-500 hover:border-violet-400/50",
+                )}
+                aria-label={isGeneratingImage ? t("story.generatingImage") : t("story.generateImage")}
+                title={isGeneratingImage ? t("story.generatingImage") : t("story.generateImage")}
+              >
+                <ImageIcon className="w-4 h-4" />
+              </Button>
               <Button
                 size="icon"
                 variant="outline"

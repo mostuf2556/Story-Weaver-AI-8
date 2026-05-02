@@ -219,6 +219,20 @@ const en: Record<string, string> = {
   "translatedLine.translating": "Translating…",
   "translatedLine.unavailable": "(translation unavailable)",
   "translatedLine.playAria": "Play this {0} translation",
+
+  "story.mergeWithNext": "Merge with next paragraph",
+  "story.errMerge": "Merge failed",
+  "story.generateImage": "Generate illustration",
+  "story.generatingImage": "Generating illustration…",
+  "story.errGenerateImage": "Image generation failed",
+  "story.storySettings": "Story Settings",
+  "story.settingsSheetClose": "Close settings",
+  "story.settingsSectionPlay": "Playback",
+  "story.settingsSectionLanguages": "Languages",
+  "story.settingsSectionVoice": "Voice & Speech",
+  "story.settingsSectionAI": "AI & Model",
+  "story.settingsSectionAppearance": "Appearance",
+  "story.imageAlt": "Story illustration",
 };
 
 const he: Record<string, string> = {
@@ -439,6 +453,20 @@ const he: Record<string, string> = {
   "translatedLine.translating": "מתרגם…",
   "translatedLine.unavailable": "(תרגום לא זמין)",
   "translatedLine.playAria": "נגן תרגום {0} זה",
+
+  "story.mergeWithNext": "מיזוג עם הפסקה הבאה",
+  "story.errMerge": "מיזוג נכשל",
+  "story.generateImage": "צור איור",
+  "story.generatingImage": "יוצר איור…",
+  "story.errGenerateImage": "יצירת תמונה נכשלה",
+  "story.storySettings": "הגדרות סיפור",
+  "story.settingsSheetClose": "סגור הגדרות",
+  "story.settingsSectionPlay": "השמעה",
+  "story.settingsSectionLanguages": "שפות",
+  "story.settingsSectionVoice": "קול ודיבור",
+  "story.settingsSectionAI": "AI ומודל",
+  "story.settingsSectionAppearance": "מראה",
+  "story.imageAlt": "איור לסיפור",
 };
 
 /**

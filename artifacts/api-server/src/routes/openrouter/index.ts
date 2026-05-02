@@ -923,4 +923,165 @@ router.post("/openrouter/completions", async (req, res): Promise<void> => {
   }
 });
 
+/**
+ * Generate an AI illustration for the current story. Uses the text model to
+ * craft a vivid image prompt from the recent story context, then calls
+ * OpenRouter's image-generation endpoint. The result is stored as an
+ * assistant message with a `[STORYIMG]:url` prefix so the UI can render it
+ * as an inline image rather than text.
+ */
+router.post(
+  "/openrouter/conversations/:id/generate-image",
+  async (req, res): Promise<void> => {
+    const params = GetOpenrouterConversationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const body = req.body as {
+      apiKey?: string;
+      apiUrl?: string;
+      model?: string;
+      imageModel?: string;
+    };
+
+    const conversationId = params.data.id;
+
+    const [conv] = await db
+      .select()
+      .from(conversationsTable)
+      .where(eq(conversationsTable.id, conversationId));
+    if (!conv) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    const allMessages = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.conversationId, conversationId))
+      .orderBy(messagesTable.createdAt);
+
+    const textMessages = allMessages.filter(
+      (m) => m.content.trim() !== "" && !m.content.startsWith("[STORYIMG]:"),
+    );
+
+    if (textMessages.length === 0) {
+      res.status(400).json({ error: "No story content to illustrate yet" });
+      return;
+    }
+
+    const cfg = loadConfig();
+    const client = getClient(body.apiKey, body.apiUrl, cfg);
+    const effectiveModel = body.model?.trim() || getDefaultModel(cfg);
+
+    // Step 1: Ask the text model to craft a descriptive image prompt
+    const contextText = textMessages
+      .slice(-4)
+      .map((m) => m.content)
+      .join("\n\n")
+      .slice(0, 1200);
+
+    let imagePrompt = contextText.slice(0, 300);
+    try {
+      const promptResult = await client.chat.completions.create({
+        model: effectiveModel,
+        max_tokens: 80,
+        temperature: 0.8,
+        messages: [
+          {
+            role: "system" as const,
+            content:
+              "You are a children's book illustrator. Write a vivid, concise image-generation prompt (15–25 words) for a soft watercolour illustration of the key scene in the story excerpt below. Focus on characters, setting, and mood. Do NOT include any text, speech bubbles, or letters in the image description.",
+          },
+          { role: "user" as const, content: contextText },
+        ],
+      });
+      const generated = promptResult.choices[0]?.message?.content?.trim();
+      if (generated) imagePrompt = generated;
+    } catch (err) {
+      logger.warn({ err }, "generate-image: prompt generation failed, using fallback");
+    }
+
+    logger.info({ imagePrompt }, "generate-image: calling image model");
+
+    // Step 2: Call the image generation endpoint on OpenRouter
+    const resolvedKey =
+      body.apiKey?.trim() ||
+      cfg.openrouter?.apiKey?.trim() ||
+      process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY ||
+      "dummy";
+    const resolvedBaseUrl =
+      body.apiUrl?.trim() ||
+      cfg.openrouter?.apiUrl?.trim() ||
+      process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL ||
+      "https://openrouter.ai/api/v1";
+    const imageModel = body.imageModel || "black-forest-labs/flux-schnell:free";
+    const imageApiUrl = resolvedBaseUrl.replace(/\/$/, "") + "/images/generations";
+
+    try {
+      const imgResp = await fetch(imageApiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resolvedKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://replit.com",
+          "X-Title": "Story Together",
+        },
+        body: JSON.stringify({
+          model: imageModel,
+          prompt: imagePrompt,
+          n: 1,
+          response_format: "url",
+        }),
+      });
+
+      if (!imgResp.ok) {
+        const errBody = (await imgResp.json().catch(() => ({}))) as {
+          error?: { message?: string } | string;
+        };
+        const errMsg =
+          typeof errBody?.error === "string"
+            ? errBody.error
+            : errBody?.error?.message ?? `Image API error ${imgResp.status}`;
+        res.status(imgResp.status).json({ error: errMsg });
+        return;
+      }
+
+      const imgData = (await imgResp.json()) as {
+        data?: Array<{ url?: string; b64_json?: string }>;
+      };
+      const imageUrl =
+        imgData.data?.[0]?.url ??
+        (imgData.data?.[0]?.b64_json
+          ? `data:image/png;base64,${imgData.data[0].b64_json}`
+          : null);
+
+      if (!imageUrl) {
+        res.status(502).json({ error: "Image generation returned no result" });
+        return;
+      }
+
+      const content = `[STORYIMG]:${imageUrl}`;
+      const [savedMessage] = await db
+        .insert(messagesTable)
+        .values({
+          conversationId,
+          role: "assistant",
+          content,
+          language: null,
+          model: imageModel,
+        })
+        .returning();
+
+      res.status(201).json({ message: savedMessage, prompt: imagePrompt });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Image generation failed";
+      logger.error({ err }, "generate-image: image API call failed");
+      res.status(500).json({ error: errMsg });
+    }
+  },
+);
+
 export default router;
