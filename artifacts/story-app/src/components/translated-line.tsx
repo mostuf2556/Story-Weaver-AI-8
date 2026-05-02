@@ -60,7 +60,7 @@ export function TranslatedLine({ text, toLang, isPlaying, onClick }: Props) {
   return (
     <div
       className={cn(
-        "mt-2 pl-3 border-l-2 text-base italic flex gap-2 rounded-r transition-colors",
+        "mt-2 ps-3 border-s-2 text-base italic flex gap-2 rounded-e transition-colors",
         isPlaying
           ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/40"
           : "border-border/40 text-muted-foreground",
@@ -84,7 +84,7 @@ export function TranslatedLine({ text, toLang, isPlaying, onClick }: Props) {
       data-playing={isPlaying ? "true" : undefined}
     >
       <Languages className="w-4 h-4 mt-1.5 shrink-0 opacity-60" />
-      <div className="whitespace-pre-wrap min-w-0 flex-1">
+      <div className="whitespace-pre-wrap min-w-0 flex-1" dir="auto">
         {/*
           BCP-47 code shown inline so users with multiple translations can
           tell at a glance which language each line is in (e.g. "fr-FR

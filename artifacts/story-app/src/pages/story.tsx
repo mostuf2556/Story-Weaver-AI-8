@@ -12,6 +12,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useStoryStream, emitDebug } from "@/hooks/use-story-stream";
 import { useSettings } from "@/hooks/use-settings";
+import { useDocumentDir } from "@/hooks/use-document-dir";
 import { useVoice } from "@/hooks/use-voice";
 import { useSounds } from "@/hooks/use-sounds";
 import { OpenrouterSettingsDialog } from "@/components/openrouter-settings-dialog";
@@ -112,7 +113,7 @@ function MessageBody({
   const tokens = useMemo(() => text.split(/(\s+)/), [text]);
   let wordIdx = -1;
   return (
-    <div className="whitespace-pre-wrap">
+    <div className="whitespace-pre-wrap" dir="auto">
       {tokens.map((tok, i) => {
         if (tok.length === 0) return null;
         if (/^\s+$/.test(tok)) return <span key={i}>{tok}</span>;
@@ -178,6 +179,7 @@ export default function Story() {
 
   const voice = useVoice(settings.blindMode);
   const { playSound } = useSounds();
+  useDocumentDir(settings.stt.aiLanguage);
 
   // Debug panel — driven by config.json `debugToggle` field (default true)
   const [debugToggle, setDebugToggle] = useState(true);
@@ -1382,7 +1384,7 @@ export default function Story() {
             <div
               key={msg.id}
               className={cn(
-                "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 pl-4 border-l-4 rounded-r-sm transition-colors",
+                "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 ps-4 border-s-4 rounded-e-sm transition-colors",
                 msg.role === "assistant"
                   ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
                   : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
@@ -1390,7 +1392,7 @@ export default function Story() {
             >
               <div
                 className={cn(
-                  "absolute -left-8 top-1.5 opacity-0 group-hover:opacity-50 transition-opacity",
+                  "absolute -start-8 top-1.5 opacity-0 group-hover:opacity-50 transition-opacity",
                   msg.role === "assistant"
                     ? "text-secondary-foreground"
                     : "text-primary"
@@ -1410,6 +1412,7 @@ export default function Story() {
                     onChange={(e) => setEditDraft(e.target.value)}
                     autoFocus
                     className="min-h-[100px] resize-none font-serif text-lg leading-relaxed bg-background/80 border-primary/40 focus-visible:ring-primary/50"
+                    dir="auto"
                     onKeyDown={(e) => {
                       if (e.key === "Escape") cancelEdit();
                       if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
@@ -1465,7 +1468,7 @@ export default function Story() {
                         : undefined
                     }
                     className={cn(
-                      "cursor-pointer rounded-r border-l-2 pl-3 -ml-3 transition-colors hover:bg-muted/30",
+                      "cursor-pointer rounded-e border-s-2 ps-3 -ms-3 transition-colors hover:bg-muted/30",
                       playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
                         ? "border-primary bg-primary/5 ring-1 ring-primary/40"
                         : "border-transparent",
@@ -1521,7 +1524,7 @@ export default function Story() {
                       )}
                     </div>
                   )}
-                  <div className="absolute -right-8 top-0.5 flex flex-row gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
+                  <div className="absolute -end-8 top-0.5 flex flex-row gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
                     <button
                       onClick={() => handlePlayMessage(msg)}
                       aria-label={
@@ -1587,8 +1590,8 @@ export default function Story() {
 
         {/* AI is composing (non-streaming) */}
         {isTyping && (
-          <div className="relative animate-in fade-in duration-300 pl-4 border-l-4 border-[#82C3DF] rounded-r-sm">
-            <div className="absolute -left-8 top-1.5 opacity-50" style={{ color: "#82C3DF" }}>
+          <div className="relative animate-in fade-in duration-300 ps-4 border-s-4 border-[#82C3DF] rounded-e-sm">
+            <div className="absolute -start-8 top-1.5 opacity-50" style={{ color: "#82C3DF" }}>
               <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
             <div className="italic text-muted-foreground font-serif">
@@ -1628,7 +1631,7 @@ export default function Story() {
             </div>
 
             {draft && (
-              <div className="px-4 py-3 rounded-lg bg-background/70 border border-border/40 font-serif text-base leading-relaxed text-primary/80">
+              <div className="px-4 py-3 rounded-lg bg-background/70 border border-border/40 font-serif text-base leading-relaxed text-primary/80" dir="auto">
                 {draft}
                 {isListening && (
                   <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-blue-400/70 animate-pulse rounded-sm" />
@@ -1650,11 +1653,12 @@ export default function Story() {
                   : "Write your next paragraph… (Cmd+Enter to send)"
               }
               disabled={isTyping}
-              className="min-h-[80px] sm:min-h-[120px] resize-none pr-24 font-serif text-base sm:text-lg leading-relaxed bg-background border-2 border-dashed border-[#FFB84D]/50 rounded-xl focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
+              className="min-h-[80px] sm:min-h-[120px] resize-none pe-24 font-serif text-base sm:text-lg leading-relaxed bg-background border-2 border-dashed border-[#FFB84D]/50 rounded-xl focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
+              dir="auto"
             />
             {/* Live interim voice transcription indicator */}
             {isListening && interimTranscript && (
-              <div className="absolute top-2 left-3 right-24 pointer-events-none">
+              <div className="absolute top-2 start-3 end-24 pointer-events-none">
                 <span className="text-[10px] font-sans text-blue-400/80 uppercase tracking-wider">
                   Listening
                   <span className="inline-block w-1 h-3 ml-1 align-middle bg-blue-400/60 animate-pulse rounded-sm" />
@@ -1662,14 +1666,14 @@ export default function Story() {
               </div>
             )}
             {isListening && !interimTranscript && (
-              <div className="absolute top-2 left-3 pointer-events-none">
+              <div className="absolute top-2 start-3 pointer-events-none">
                 <span className="text-[10px] font-sans text-blue-400/70 uppercase tracking-wider flex items-center gap-1">
                   <Mic className="w-2.5 h-2.5" />
                   Listening…
                 </span>
               </div>
             )}
-            <div className="absolute bottom-3 right-3 flex gap-1.5">
+            <div className="absolute bottom-3 end-3 flex gap-1.5">
               <Button
                 size="icon"
                 variant="outline"
@@ -1694,7 +1698,7 @@ export default function Story() {
                 style={{ backgroundColor: "#E65C40", boxShadow: "0 4px 0 0 #C54A32" }}
                 aria-label="Send your paragraph"
               >
-                <Send className="w-4 h-4 ml-0.5" />
+                <Send className="w-4 h-4 ms-0.5" />
               </Button>
               {settings.gameMode === "manual" && (
                 <Button

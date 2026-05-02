@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Trash2 } from "lucide-react";
 import { useSettings } from "@/hooks/use-settings";
+import { useDocumentDir } from "@/hooks/use-document-dir";
 import { OpenrouterSettingsDialog } from "@/components/openrouter-settings-dialog";
 import { SttSettingsDialog } from "@/components/stt-settings-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -41,6 +42,7 @@ export default function Home() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const { settings, updateSettings } = useSettings();
+  useDocumentDir(settings.stt.aiLanguage);
   const { data: conversations, isLoading } = useListOpenrouterConversations();
   const createConversation = useCreateOpenrouterConversation();
   const deleteConversation = useDeleteOpenrouterConversation();
