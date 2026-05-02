@@ -34,6 +34,13 @@ interface AppConfig {
     apiUrl?: string;
     model?: string;
   };
+  /**
+   * When true (the default), the AI is given strict child-safety guardrails:
+   * it must match the child's tone and vocabulary, stay within the child's
+   * imaginative direction, and avoid any content unsuitable for a picture book.
+   * Set to false for unrestricted adult / demo use.
+   */
+  childSafe?: boolean;
 }
 
 /**
@@ -128,23 +135,38 @@ const router: IRouter = Router();
  * Build the system prompt for AI completions. Optionally pins the response
  * language so the AI replies in the user's preferred BCP-47 language even if
  * the conversation history is in a different language.
+ *
+ * When `childSafe` is true (the default) the prompt adds three extra rules:
+ *   1. Mirror the child's tone, vocabulary level, and imaginative direction.
+ *   2. Never steer — only extend what the child already introduced.
+ *   3. Strict content guardrails: no violence, death, fear, adult themes,
+ *      crude language, or anything out of place in a children's picture book.
  */
 function buildSystemPrompt(opts: {
   maxWords: number;
   language?: string;
   /** "continue" appends a new paragraph; "fit-here" rewrites in place. */
   mode: "continue" | "fit-here";
+  /** Defaults to true. Set false only for unrestricted adult / demo use. */
+  childSafe?: boolean;
 }): string {
-  const { maxWords, language, mode } = opts;
+  const { maxWords, language, mode, childSafe = true } = opts;
+
   const langClause =
     language && language.trim()
       ? ` IMPORTANT LANGUAGE RULE: Write your paragraph in ${language} (BCP-47 language code). Use natural, fluent ${language} regardless of what language earlier turns were written in.`
       : "";
+
   const taskClause =
     mode === "fit-here"
       ? "Write exactly one creative paragraph that fits naturally at this point in the story. The paragraph you produce will REPLACE the existing paragraph at this position, so any later paragraphs will follow yours. Do not summarize what came before, do not conclude the story, and avoid repeating earlier wording."
       : "Write exactly one new creative paragraph that continues the story forward. IMPORTANT: Do not repeat, restate, or paraphrase anything that has already been written — only add brand-new content that hasn't appeared yet. Do not summarize or conclude the story — leave room for the user to continue.";
-  return `You are a collaborative storytelling AI friend. The user and you are writing a story together, taking turns. ${taskClause} Be imaginative and engaging. Your response must be at most ${maxWords} words long — stop at a natural sentence boundary within that limit.${langClause}`;
+
+  const safetyClause = childSafe
+    ? " TONE AND SAFETY RULES (mandatory — never override): Read the story so far carefully and match the child's own tone, vocabulary level, and imaginative direction exactly. If they wrote about a friendly dragon, keep it friendly; if they used simple words, you use simple words. Never steer the story toward your own ideas — only amplify and extend what the child already introduced. Keep every sentence warm, playful, and age-appropriate. STRICTLY FORBIDDEN: violence, injury, death, blood, fear or horror, scary monsters, adult or romantic themes, crude or offensive language, and any content that would feel out of place in a children's picture book."
+    : "";
+
+  return `You are a collaborative storytelling AI friend. The user and you are writing a story together, taking turns. ${taskClause} Be imaginative and engaging. Your response must be at most ${maxWords} words long — stop at a natural sentence boundary within that limit.${safetyClause}${langClause}`;
 }
 
 function getClient(
@@ -335,7 +357,12 @@ router.post(
       const streamMessages = [
         {
           role: "system" as const,
-          content: `You are a collaborative storytelling AI friend. The user and you are writing a story together, taking turns. Write exactly one new creative paragraph that continues the story forward. IMPORTANT: Do not repeat, restate, or paraphrase anything that has already been written — only add brand-new content that hasn't appeared yet. Do not summarize or conclude the story — leave room for the user to continue. Be imaginative and engaging. Your response must be at most ${maxWords} words long — stop at a natural sentence boundary within that limit.`,
+          content: buildSystemPrompt({
+            maxWords,
+            language: language ?? undefined,
+            mode: "continue",
+            childSafe: cfg.childSafe !== false,
+          }),
         },
         ...chatHistory,
       ];
@@ -450,6 +477,7 @@ router.post(
             maxWords,
             language: language ?? undefined,
             mode: "continue",
+            childSafe: cfg.childSafe !== false,
           }),
         },
         ...chatHistory,
@@ -708,6 +736,7 @@ router.post(
             maxWords,
             language: language ?? undefined,
             mode: "fit-here",
+            childSafe: cfg.childSafe !== false,
           }),
         },
         ...chatHistory,
