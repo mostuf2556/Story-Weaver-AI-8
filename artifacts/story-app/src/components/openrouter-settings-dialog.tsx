@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { type StorySettings } from "@/hooks/use-settings";
+import { useT } from "@/lib/i18n-context";
 
 interface Props {
   settings: StorySettings;
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<StorySettings>(settings);
 
@@ -42,8 +44,8 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
           variant="ghost"
           size="icon"
           className="text-muted-foreground hover:text-foreground"
-          aria-label="AI settings"
-          title="AI settings"
+          aria-label={t("story.aiSettings")}
+          title={t("story.aiSettings")}
           data-testid="button-openrouter-settings"
         >
           <Settings className="w-5 h-5" />
@@ -52,10 +54,10 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>
-            AI Settings
+            {t("aiSettings.title")}
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
-            Model and generation parameters. Saved locally in your browser.
+            {t("aiSettings.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -64,11 +66,10 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-4 py-3">
             <div>
               <Label htmlFor="gameMode" className="text-sm font-medium cursor-pointer">
-                Manual AI Turn
+                {t("aiSettings.manualTurn")}
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Off: AI replies automatically after you send. On: tap the spark
-                button to take the AI's turn.
+                {t("aiSettings.manualTurnDesc")}
               </p>
             </div>
             <Switch
@@ -81,7 +82,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="model">Model</Label>
+            <Label htmlFor="model">{t("aiSettings.model")}</Label>
             <Input
               id="model"
               data-testid="input-model"
@@ -93,7 +94,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               className="bg-background border-border focus-visible:ring-primary font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Any OpenRouter model ID, e.g.{" "}
+              {t("aiSettings.modelHint")}{" "}
               <span className="font-mono">openrouter/free</span>,{" "}
               <span className="font-mono">meta-llama/llama-4-scout</span>
             </p>
@@ -101,9 +102,10 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
 
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <Label htmlFor="maxTokens">Response Length</Label>
+              <Label htmlFor="maxTokens">{t("aiSettings.responseLength")}</Label>
               <span className="text-sm tabular-nums text-muted-foreground">
-                {local.maxTokens} {local.maxTokens === 1 ? "word" : "words"}
+                {local.maxTokens}{" "}
+                {local.maxTokens === 1 ? t("aiSettings.word") : t("aiSettings.words")}
               </span>
             </div>
             <Slider
@@ -117,14 +119,14 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               className="w-full"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>1 word</span>
-              <span>20 words</span>
+              <span>{t("aiSettings.oneWord")}</span>
+              <span>{t("aiSettings.twentyWords")}</span>
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <Label htmlFor="temperature">Temperature</Label>
+              <Label htmlFor="temperature">{t("aiSettings.temperature")}</Label>
               <span className="text-sm tabular-nums text-muted-foreground">
                 {local.temperature.toFixed(2)}
               </span>
@@ -142,16 +144,16 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               className="w-full"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0 — precise</span>
-              <span>2 — creative</span>
+              <span>{t("aiSettings.tempPrecise")}</span>
+              <span>{t("aiSettings.tempCreative")}</span>
             </div>
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-border/40">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-              Custom API (optional)
+              {t("aiSettings.customApi")}
             </p>
-            <Label htmlFor="apiKey">OpenRouter API Key</Label>
+            <Label htmlFor="apiKey">{t("aiSettings.apiKey")}</Label>
             <Input
               id="apiKey"
               data-testid="input-api-key"
@@ -166,7 +168,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="apiUrl">OpenRouter Base URL</Label>
+            <Label htmlFor="apiUrl">{t("aiSettings.apiUrlLabel")}</Label>
             <Input
               id="apiUrl"
               data-testid="input-api-url"
@@ -178,15 +180,16 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               className="bg-background border-border focus-visible:ring-primary font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Leave blank to use the built-in Replit-managed key.
+              {t("aiSettings.apiUrlHint")}
             </p>
           </div>
 
           <div className="space-y-2 pt-2 border-t border-border/40">
             <div className="flex justify-between items-center">
-              <Label htmlFor="aiMaxRetries">Retry empty responses</Label>
+              <Label htmlFor="aiMaxRetries">{t("aiSettings.retries")}</Label>
               <span className="text-sm tabular-nums text-muted-foreground">
-                {local.aiMaxRetries} {local.aiMaxRetries === 1 ? "time" : "times"}
+                {local.aiMaxRetries}{" "}
+                {local.aiMaxRetries === 1 ? t("aiSettings.time") : t("aiSettings.times")}
               </span>
             </div>
             <Slider
@@ -202,9 +205,36 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              If the AI returns an empty reply, the server retries this many
-              times before showing an error.
+              {t("aiSettings.retriesHint")}
             </p>
+          </div>
+
+          {/* Interface language */}
+          <div className="space-y-2 pt-2 border-t border-border/40">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {t("aiSettings.interfaceLang")}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={local.uiLanguage === "en" ? "default" : "outline"}
+                onClick={() => setLocal((p) => ({ ...p, uiLanguage: "en" }))}
+                className="rounded-full px-4"
+              >
+                {t("aiSettings.english")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={local.uiLanguage === "he" ? "default" : "outline"}
+                onClick={() => setLocal((p) => ({ ...p, uiLanguage: "he" }))}
+                className="rounded-full px-4"
+                style={{ fontFamily: "'Noto Sans Hebrew', 'Arial Hebrew', sans-serif" }}
+              >
+                {t("aiSettings.hebrew")}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -214,7 +244,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
             onClick={() => setOpen(false)}
             className="rounded-full font-sans border-2"
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             onClick={handleSave}
@@ -222,7 +252,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
             style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
             data-testid="button-save-openrouter-settings"
           >
-            Save Settings
+            {t("saveSettings")}
           </Button>
         </DialogFooter>
       </DialogContent>

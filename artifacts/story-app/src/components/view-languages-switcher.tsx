@@ -7,27 +7,16 @@ import {
 } from "@/components/ui/popover";
 import { STT_LANGUAGES } from "@/config/stt";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n-context";
 
 interface Props {
-  /** Selected BCP-47 codes. Empty array = no translations shown. */
   value: string[];
   onChange: (langs: string[]) => void;
-  /** Short label rendered inside the trigger (next to the icon). */
   label?: string;
 }
 
-/**
- * Multi-select language picker for on-screen translations.
- *
- * Picks zero or more BCP-47 languages from `STT_LANGUAGES`. Each selected
- * language renders its own `<TranslatedLine>` under every story paragraph
- * and (depending on `ttsTranslationMode`) is also spoken aloud during
- * playback.
- *
- * Trigger label summarizes the selection: "Original" when empty, the
- * single code when one is selected, otherwise "<count> langs".
- */
 export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
+  const t = useT();
   const selectedSet = new Set(value);
 
   const toggle = (code: string) => {
@@ -42,15 +31,15 @@ export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
 
   const triggerText =
     value.length === 0
-      ? "Original"
+      ? t("viewLangs.original")
       : value.length === 1
         ? value[0]
-        : `${value.length} langs`;
+        : t("viewLangs.nLangs", String(value.length));
 
   const title =
     value.length === 0
-      ? "Translations: off (showing original only)"
-      : `Translate story to: ${value.join(", ")}`;
+      ? t("viewLangs.translationsOff")
+      : t("viewLangs.translateTo", value.join(", "));
 
   return (
     <Popover>
@@ -58,7 +47,7 @@ export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
         <Button
           variant="ghost"
           size="sm"
-          aria-label="Translation languages"
+          aria-label={t("viewLangs.ariaLabel")}
           title={title}
           data-testid="select-view-languages"
           className="h-8 gap-1 px-2 border border-border/60 bg-transparent text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-accent/40"
@@ -79,8 +68,8 @@ export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
           <span className="text-xs font-sans text-muted-foreground">
             {value.length === 0
-              ? "No translations"
-              : `${value.length} selected`}
+              ? t("viewLangs.noTranslations")
+              : t("viewLangs.selected", String(value.length))}
           </span>
           <button
             type="button"
@@ -89,7 +78,7 @@ export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
             className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
             data-testid="clear-view-languages"
           >
-            Clear
+            {t("viewLangs.clear")}
           </button>
         </div>
         <div className="overflow-y-auto py-1">

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { type StorySettings } from "@/hooks/use-settings";
 import { STT_LANGUAGES, type SttContinueMode } from "@/config/stt";
+import { useT } from "@/lib/i18n-context";
 
 interface Props {
   settings: StorySettings;
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export function SttSettingsDialog({ settings, onSave }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<StorySettings>(settings);
 
@@ -49,8 +51,8 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
           variant="ghost"
           size="icon"
           className="text-muted-foreground hover:text-foreground"
-          aria-label="Voice settings"
-          title="Voice settings"
+          aria-label={t("story.voiceSettings")}
+          title={t("story.voiceSettings")}
           data-testid="button-stt-settings"
         >
           <AudioLines className="w-5 h-5" />
@@ -59,10 +61,10 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>
-            Voice Settings
+            {t("voiceSettings.title")}
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
-            Speech recognition, text-to-speech, and Blind Mode behavior.
+            {t("voiceSettings.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -71,10 +73,10 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-4 py-3">
             <div>
               <Label htmlFor="blindMode" className="text-sm font-medium cursor-pointer">
-                Blind Mode
+                {t("voiceSettings.blindMode")}
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Hands-free: AI reads aloud, then you speak your turn.
+                {t("voiceSettings.blindModeDesc")}
               </p>
             </div>
             <Switch
@@ -88,10 +90,10 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background px-4 py-3">
             <div>
               <Label htmlFor="playUserTranscription" className="text-sm font-medium cursor-pointer">
-                Play Back Your Words
+                {t("voiceSettings.playBack")}
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                In Blind Mode, read your transcribed paragraph aloud before sending.
+                {t("voiceSettings.playBackDesc")}
               </p>
             </div>
             <Switch
@@ -106,11 +108,11 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
           {/* Languages */}
           <div className="space-y-3 pt-2 border-t border-border/40">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Languages
+              {t("voiceSettings.languages")}
             </p>
 
             <div className="space-y-1.5">
-              <Label htmlFor="sttLanguage">Your speech language</Label>
+              <Label htmlFor="sttLanguage">{t("voiceSettings.yourSpeech")}</Label>
               <Select
                 value={local.stt.language}
                 onValueChange={(v) =>
@@ -122,7 +124,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                   data-testid="select-stt-language"
                   className="bg-background border-border"
                 >
-                  <SelectValue placeholder="Select a language" />
+                  <SelectValue placeholder={t("voiceSettings.selectLanguage")} />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   {STT_LANGUAGES.map((l) => (
@@ -136,12 +138,12 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Used for speech recognition and reading your own words back.
+                {t("voiceSettings.yourSpeechHint")}
               </p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="sttAiLanguage">AI friend language</Label>
+              <Label htmlFor="sttAiLanguage">{t("voiceSettings.aiFriend")}</Label>
               <Select
                 value={local.stt.aiLanguage}
                 onValueChange={(v) =>
@@ -153,7 +155,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                   data-testid="select-stt-ai-language"
                   className="bg-background border-border"
                 >
-                  <SelectValue placeholder="Select a language" />
+                  <SelectValue placeholder={t("voiceSettings.selectLanguage")} />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   {STT_LANGUAGES.map((l) => (
@@ -167,9 +169,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Language the AI writes in (and the voice used to read AI
-                paragraphs aloud). Switch this to chat with the AI in a
-                different language.
+                {t("voiceSettings.aiFriendHint")}
               </p>
             </div>
           </div>
@@ -177,12 +177,12 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
           {/* Listening behavior */}
           <div className="space-y-3 pt-2 border-t border-border/40">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Listening Behavior
+              {t("voiceSettings.listeningBehavior")}
             </p>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="sttSilence">Silence before stopping</Label>
+                <Label htmlFor="sttSilence">{t("voiceSettings.silence")}</Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {(local.stt.silenceMs / 1000).toFixed(1)} s
                 </span>
@@ -203,16 +203,16 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                After you stop talking, listening ends after this many seconds.
+                {t("voiceSettings.silenceHint")}
               </p>
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="sttMaxSpeech">Max speech duration</Label>
+                <Label htmlFor="sttMaxSpeech">{t("voiceSettings.maxSpeech")}</Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {local.stt.maxSpeechMs === 0
-                    ? "Off"
+                    ? t("voiceSettings.off")
                     : `${(local.stt.maxSpeechMs / 1000).toFixed(0)} s`}
                 </span>
               </div>
@@ -232,15 +232,13 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                Once you start talking, force-stop after this many seconds.
-                Helps in noisy rooms where the silence detector won't fire.
-                Set to 0 to disable.
+                {t("voiceSettings.maxSpeechHint")}
               </p>
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="sttNudge">Wait before nudging</Label>
+                <Label htmlFor="sttNudge">{t("voiceSettings.nudge")}</Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {(local.stt.nudgeMs / 1000).toFixed(1)} s
                 </span>
@@ -261,13 +259,13 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                If you stay silent this long, a soft nudge sound plays.
+                {t("voiceSettings.nudgeHint")}
               </p>
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label htmlFor="sttMaxNudges">Number of nudges</Label>
+                <Label htmlFor="sttMaxNudges">{t("voiceSettings.nudgeCount")}</Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {local.stt.maxNudges}
                 </span>
@@ -288,12 +286,12 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                After this many nudges with no response, listening pauses.
+                {t("voiceSettings.nudgeCountHint")}
               </p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="sttContinueMode">Keep listening</Label>
+              <Label htmlFor="sttContinueMode">{t("voiceSettings.keepListening")}</Label>
               <Select
                 value={local.stt.continueMode}
                 onValueChange={(v) =>
@@ -311,20 +309,20 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="off">Off — pause after no response</SelectItem>
-                  <SelectItem value="continuous">Continuous — restart immediately</SelectItem>
-                  <SelectItem value="interval">Interval — wait, then retry</SelectItem>
+                  <SelectItem value="off">{t("voiceSettings.continueOff")}</SelectItem>
+                  <SelectItem value="continuous">{t("voiceSettings.continueContinuous")}</SelectItem>
+                  <SelectItem value="interval">{t("voiceSettings.continueInterval")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Choose what happens after listening times out with no speech.
+                {t("voiceSettings.keepListeningHint")}
               </p>
             </div>
 
             {local.stt.continueMode === "interval" && (
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="sttInterval">Retry interval</Label>
+                  <Label htmlFor="sttInterval">{t("voiceSettings.retryInterval")}</Label>
                   <span className="text-sm tabular-nums text-muted-foreground">
                     {local.stt.intervalSeconds} s
                   </span>
@@ -345,7 +343,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
                   className="w-full"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Seconds to wait before automatically listening again.
+                  {t("voiceSettings.retryIntervalHint")}
                 </p>
               </div>
             )}
@@ -358,7 +356,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
             onClick={() => setOpen(false)}
             className="rounded-full font-sans border-2"
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             onClick={handleSave}
@@ -366,7 +364,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
             style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
             data-testid="button-save-stt-settings"
           >
-            Save Settings
+            {t("saveSettings")}
           </Button>
         </DialogFooter>
       </DialogContent>

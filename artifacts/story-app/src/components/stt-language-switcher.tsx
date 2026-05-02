@@ -7,32 +7,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { STT_LANGUAGES } from "@/config/stt";
+import { useT } from "@/lib/i18n-context";
 
 export const VIEW_OFF = "off" as const;
 
 interface Props {
   value: string;
   onChange: (lang: string) => void;
-  /**
-   * Visual variant changes the icon, default labels, and (for "view") adds
-   * an "Original" entry that disables translation.
-   */
   variant?: "stt" | "ai" | "view";
-  /** Short label shown inside the trigger to indicate purpose. */
   label?: string;
-  /** Override aria-label / title (defaults are derived from variant). */
   ariaLabel?: string;
   title?: string;
-  /** Override the data-testid (defaults are derived from variant). */
   testId?: string;
 }
 
-/**
- * Compact language picker shown in the story page header. Used for:
- *   - speech-recognition language ("stt")
- *   - AI response language ("ai")
- *   - on-screen translation language ("view") — includes an "Original" entry.
- */
 export function SttLanguageSwitcher({
   value,
   onChange,
@@ -42,26 +30,27 @@ export function SttLanguageSwitcher({
   title,
   testId,
 }: Props) {
+  const t = useT();
   const Icon =
     variant === "ai" ? Sparkles : variant === "view" ? Eye : Languages;
 
   const defaultAria =
     variant === "ai"
-      ? "AI response language"
+      ? t("langSwitcher.aiResponseLanguage")
       : variant === "view"
-        ? "Translation language"
-        : "Speech recognition language";
+        ? t("langSwitcher.translationLanguage")
+        : t("langSwitcher.speechLanguage");
 
-  const displayValue = value === VIEW_OFF ? "Original" : value;
+  const displayValue = value === VIEW_OFF ? t("langSwitcher.original") : value;
 
   const defaultTitle =
     variant === "ai"
-      ? `AI response language: ${value}`
+      ? t("langSwitcher.aiTitle", value)
       : variant === "view"
         ? value === VIEW_OFF
-          ? "Translation: off (showing original)"
-          : `Translate story to: ${value}`
-        : `Speech recognition language: ${value}`;
+          ? t("langSwitcher.translationOff")
+          : t("langSwitcher.translateTo", value)
+        : t("langSwitcher.sttTitle", value);
 
   const defaultTestId =
     variant === "ai"
@@ -89,7 +78,7 @@ export function SttLanguageSwitcher({
       <SelectContent className="max-h-72">
         {variant === "view" && (
           <SelectItem value={VIEW_OFF}>
-            Original{" "}
+            {t("langSwitcher.original")}{" "}
             <span className="text-muted-foreground font-mono text-xs">
               (off)
             </span>

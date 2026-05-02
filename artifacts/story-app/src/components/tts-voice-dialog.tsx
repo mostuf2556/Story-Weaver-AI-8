@@ -20,48 +20,29 @@ import {
 } from "@/components/ui/select";
 import { type StorySettings } from "@/hooks/use-settings";
 import { STT_LANGUAGES } from "@/config/stt";
+import { useT } from "@/lib/i18n-context";
 
 interface Props {
   settings: StorySettings;
   onSave: (patch: Partial<StorySettings>) => void;
 }
 
-/**
- * Dialog for configuring per-language text-to-speech voice selection.
- *
- * The story page can read each saved message in its own BCP-47 language.
- * This dialog lets the user pick a specific voice for any language. When
- * no override is set, the browser's default voice for that language is used.
- * Saved overrides are listed below so they can be inspected and removed
- * individually.
- */
 export function TtsVoiceDialog({ settings, onSave }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<StorySettings>(settings);
-  // Which language the per-language voice selector is currently editing.
-  // Defaults to the user's STT language so the most common case is one click away.
   const [editingLang, setEditingLang] = useState<string>(
     settings.stt.language || "en-US",
   );
-
-  // All available voices from the browser's SpeechSynthesis API
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
-  // Fetch available voices when dialog opens or voices change
   useEffect(() => {
     const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
     if (!synth) return;
-
-    const updateVoices = () => {
-      const voices = synth.getVoices();
-      setAvailableVoices(voices);
-    };
-
+    const updateVoices = () => setAvailableVoices(synth.getVoices());
     updateVoices();
     synth.addEventListener("voiceschanged", updateVoices);
-    return () => {
-      synth.removeEventListener("voiceschanged", updateVoices);
-    };
+    return () => synth.removeEventListener("voiceschanged", updateVoices);
   }, [open]);
 
   const handleOpen = (v: boolean) => {
@@ -77,34 +58,20 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
     setOpen(false);
   };
 
-  // Get voices available for the currently selected language
   const voicesForLang = useMemo(() => {
     if (!availableVoices.length) return [];
     const target = editingLang.toLowerCase();
     const targetBase = target.split("-")[0];
-
-    // First, exact language matches
-    const exact = availableVoices.filter(
-      (v) => v.lang.toLowerCase() === target
-    );
-
-    // Then, language-base matches (e.g., "en" for "en-US")
+    const exact = availableVoices.filter((v) => v.lang.toLowerCase() === target);
     const baseMatches = availableVoices.filter(
-      (v) =>
-        v.lang.toLowerCase().split("-")[0] === targetBase &&
-        !exact.includes(v)
+      (v) => v.lang.toLowerCase().split("-")[0] === targetBase && !exact.includes(v),
     );
-
     return [...exact, ...baseMatches];
   }, [availableVoices, editingLang]);
 
-  // Sentinel value for "browser default" (no override)
   const DEFAULT_VOICE_SENTINEL = "__browser_default__";
-
   const selectedVoiceName = local.ttsVoices[editingLang];
-  const selectedVoice = availableVoices.find(
-    (v) => v.name === selectedVoiceName
-  );
+  const selectedVoice = availableVoices.find((v) => v.name === selectedVoiceName);
 
   const setVoiceForEditingLang = (voiceName: string) => {
     if (voiceName === DEFAULT_VOICE_SENTINEL) {
@@ -129,7 +96,6 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
     });
   };
 
-  // Build a label lookup once so the override list shows friendly names.
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
     for (const l of STT_LANGUAGES) map[l.code] = l.label;
@@ -148,7 +114,7 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
         <Button
           variant="ghost"
           size="sm"
-          title="Configure text-to-speech voice per language"
+          title={t("ttsVoice.configureTitle")}
         >
           <Mic className="w-4 h-4" />
         </Button>
@@ -156,23 +122,18 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>
-            Text-to-Speech Voice
+            {t("ttsVoice.title")}
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
-            Select a preferred voice for each language. When no override is set,
-            the browser's default voice for that language is used.
+            {t("ttsVoice.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Language selector */}
           <div className="space-y-1.5">
-            <Label htmlFor="lang-select">Language</Label>
+            <Label htmlFor="lang-select">{t("ttsVoice.language")}</Label>
             <Select value={editingLang} onValueChange={setEditingLang}>
-              <SelectTrigger
-                id="lang-select"
-                className="bg-background border-border"
-              >
+              <SelectTrigger id="lang-select" className="bg-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-64">
@@ -188,35 +149,33 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
             </Select>
           </div>
 
-          {/* Voice selector */}
           {voicesForLang.length > 0 ? (
             <div className="space-y-1.5">
               <Label htmlFor="voice-select">
-                Voice
+                {t("ttsVoice.voice")}
                 {hasVoiceOverride && (
-                  <span className="text-xs text-muted-foreground ml-2">(custom)</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {t("ttsVoice.custom")}
+                  </span>
                 )}
               </Label>
               <Select
                 value={selectedVoiceName || DEFAULT_VOICE_SENTINEL}
                 onValueChange={setVoiceForEditingLang}
               >
-                <SelectTrigger
-                  id="voice-select"
-                  className="bg-background border-border"
-                >
+                <SelectTrigger id="voice-select" className="bg-background border-border">
                   <SelectValue
-                    placeholder={selectedVoice?.name || "Browser default"}
+                    placeholder={selectedVoice?.name || t("ttsVoice.browserDefault")}
                   />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
                   <SelectItem value={DEFAULT_VOICE_SENTINEL}>
-                    Browser default
+                    {t("ttsVoice.browserDefault")}
                   </SelectItem>
                   {voicesForLang.map((voice) => (
                     <SelectItem key={voice.name} value={voice.name}>
                       {voice.name}
-                      {voice.default && " (system default)"}
+                      {voice.default && t("ttsVoice.systemDefault")}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -224,15 +183,14 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
             </div>
           ) : (
             <div className="text-sm text-muted-foreground p-3 rounded-lg border border-border/60 bg-background">
-              No voices available for this language.
+              {t("ttsVoice.noVoices")}
             </div>
           )}
 
-          {/* List of saved overrides */}
           {overrideEntries.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-border/40">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Saved Overrides
+                {t("ttsVoice.savedOverrides")}
               </p>
               <ul className="space-y-1">
                 {overrideEntries.map(([lang, voiceName]) => {
@@ -255,7 +213,7 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
                         size="icon"
                         onClick={() => clearOverride(lang)}
                         className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                        title="Remove override"
+                        title={t("ttsVoice.removeOverride")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -273,14 +231,14 @@ export function TtsVoiceDialog({ settings, onSave }: Props) {
             onClick={() => setOpen(false)}
             className="rounded-full font-sans border-2"
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             onClick={handleSave}
             className="rounded-full font-bold font-sans bg-primary text-primary-foreground active:translate-y-[2px] transition-all duration-100 hover:-translate-y-0.5"
             style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
           >
-            Save
+            {t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>

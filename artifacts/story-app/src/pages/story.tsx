@@ -58,6 +58,8 @@ import {
   Bug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getT } from "@/lib/i18n";
+import { I18nProvider } from "@/lib/i18n-context";
 
 /**
  * Turn an unknown error from a mutation/fetch into a single-line user-
@@ -179,7 +181,8 @@ export default function Story() {
 
   const voice = useVoice(settings.blindMode);
   const { playSound } = useSounds();
-  useDocumentDir(settings.stt.aiLanguage);
+  useDocumentDir(settings.uiLanguage);
+  const t = getT(settings.uiLanguage);
 
   // Debug panel — driven by config.json `debugToggle` field (default true)
   const [debugToggle, setDebugToggle] = useState(true);
@@ -705,7 +708,7 @@ export default function Story() {
         // 1. Speak the last AI paragraph (only when it's actually new)
         if (lastMsg?.role === "assistant" && shouldSpeak) {
           lastHandledMsgIdRef.current = lastMsg.id!;
-          setBlindStatus("Reading the story aloud…");
+          setBlindStatus(getT(settingsRef.current.uiLanguage)("story.readingAloud"));
           // Prefer the language saved with the message; fall back to the
           // current AI-language setting for legacy rows.
           const lang = lastMsg.language ?? cur.stt.aiLanguage;
@@ -720,7 +723,7 @@ export default function Story() {
         if (!blindModeEnabledRef.current) return;
 
         // 2. Listen — config-driven nudge / silence / language
-        setBlindStatus("Listening… speak your paragraph.");
+        setBlindStatus(getT(settingsRef.current.uiLanguage)("story.listeningSpeak"));
         const transcript = await voice.listenOnce({
           silenceMs: cur.stt.silenceMs,
           nudgeMs: cur.stt.nudgeMs,
@@ -734,15 +737,15 @@ export default function Story() {
           silenceWarningMs: 1500,
           onSilenceWarning: () => {
             playSound("silence-warning");
-            setBlindStatus("Wrapping up… finishing soon.");
+            setBlindStatus(getT(settingsRef.current.uiLanguage)("story.wrappingUp"));
           },
           onNudge: (n) => {
             playSound("nudge");
             setIsNoResponse(true);
             setBlindStatus(
               n < cur.stt.maxNudges
-                ? "Still listening… speak whenever you're ready."
-                : "Last chance… speak now or listening will stop.",
+                ? getT(settingsRef.current.uiLanguage)("story.stillListening")
+                : getT(settingsRef.current.uiLanguage)("story.lastChance"),
             );
           },
         });
@@ -756,14 +759,14 @@ export default function Story() {
           // No response — react based on continue mode
           const mode = settingsRef.current.stt.continueMode;
           if (mode === "continuous") {
-            setBlindStatus("No response — listening again…");
+            setBlindStatus(getT(settingsRef.current.uiLanguage)("story.noResponseAgain"));
             // Loop will re-run because we bump the tick after release
             queueMicrotask(() => setRefreshTick((t) => t + 1));
           } else if (mode === "interval") {
             const secs = settingsRef.current.stt.intervalSeconds;
             gaveUpRef.current = true;
             setBlindStatus(
-              `No response. Listening again in ${secs}s — tap refresh to retry now.`,
+              getT(settingsRef.current.uiLanguage)("story.noResponseInterval", String(secs)),
             );
             clearIntervalRetry();
             intervalRetryTimerRef.current = setTimeout(() => {
@@ -774,7 +777,7 @@ export default function Story() {
           } else {
             gaveUpRef.current = true;
             setBlindStatus(
-              "No response detected. Tap refresh to listen again.",
+              getT(settingsRef.current.uiLanguage)("story.noResponseTapRefresh"),
             );
           }
           return;
@@ -783,7 +786,7 @@ export default function Story() {
         // 3. Play back what was heard (if option enabled) — use the user's
         //    speech language so the transcript is read in the same voice.
         if (cur.playUserTranscription) {
-          setBlindStatus("Playing back your paragraph…");
+          setBlindStatus(getT(settingsRef.current.uiLanguage)("story.playingBackParagraph"));
           await voice.speak(
             transcript.trim(),
             cur.stt.language,
@@ -796,7 +799,7 @@ export default function Story() {
         // 4. Play STT complete sound and submit
         playSound("stt-complete");
         setDraft(transcript.trim());
-        setBlindStatus("Sending your paragraph…");
+        setBlindStatus(getT(settingsRef.current.uiLanguage)("story.sendingParagraph"));
         await sendMessage(transcript.trim(), { autoAiTurn: true });
         setDraft("");
         setBlindStatus("");
@@ -840,7 +843,7 @@ export default function Story() {
     voice.stopListening();
     gaveUpRef.current = false;
     setIsNoResponse(false);
-    setBlindStatus("Restarting…");
+    setBlindStatus(getT(settingsRef.current.uiLanguage)("story.restarting"));
     // Force the loop to re-run even if we just listened to the same AI msg
     setRefreshTick((t) => t + 1);
   }, [voice, clearIntervalRetry]);
@@ -871,12 +874,12 @@ export default function Story() {
     } catch (err) {
       console.error("Save edit failed:", err);
       playSound("error");
-      setActionError(formatActionError("Could not save edit", err));
+      setActionError(formatActionError(t("story.errSaveEdit"), err));
     }
   };
 
   const handleDeleteMessage = async (messageId: number) => {
-    if (!confirm("Delete this paragraph?")) return;
+    if (!confirm(t("story.confirmDelete"))) return;
     try {
       await deleteMessage.mutateAsync({ messageId });
       queryClient.invalidateQueries({
@@ -885,7 +888,7 @@ export default function Story() {
     } catch (err) {
       console.error("Delete failed:", err);
       playSound("error");
-      setActionError(formatActionError("Delete failed", err));
+      setActionError(formatActionError(t("story.errDelete"), err));
     }
   };
 
@@ -934,7 +937,7 @@ export default function Story() {
     } catch (err) {
       console.error("Regenerate failed:", err);
       playSound("error");
-      setActionError(formatActionError("Regenerate failed", err));
+      setActionError(formatActionError(t("story.errRegenerate"), err));
     } finally {
       const res = responseJson as {
         requestedModel?: string;
@@ -1029,10 +1032,10 @@ export default function Story() {
           className="text-4xl font-bold mb-3"
           style={{ fontFamily: "'Caveat', cursive", color: "#E65C40" }}
         >
-          Story not found
+          {t("story.notFound")}
         </h2>
         <p className="text-muted-foreground mb-6 font-sans">
-          This chapter seems to have wandered off…
+          {t("story.notFoundHint")}
         </p>
         <Link href="/">
           <button
@@ -1043,7 +1046,7 @@ export default function Story() {
               boxShadow: "0 5px 0 0 #C54A32",
             }}
           >
-            ← Return to Library
+            {t("story.returnToLibrary")}
           </button>
         </Link>
       </div>
@@ -1051,6 +1054,7 @@ export default function Story() {
   }
 
   return (
+    <I18nProvider locale={settings.uiLanguage}>
     <div
       className={cn(
         "max-w-3xl mx-auto min-h-screen flex flex-col transition-colors duration-700",
@@ -1081,11 +1085,11 @@ export default function Story() {
                 backgroundColor: "#E65C40",
                 boxShadow: "0 4px 0 0 #C54A32",
               }}
-              aria-label="Back to home"
-              title="Back to home"
+              aria-label={t("story.backToLibrary")}
+              title={t("story.backToLibrary")}
             >
               <Home className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Home</span>
+              <span className="hidden sm:inline">{t("story.backToLibrary")}</span>
             </button>
           </Link>
           <h1
@@ -1099,13 +1103,13 @@ export default function Story() {
           {isListening && !isNoResponse && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/15 border border-blue-400/30">
               <Mic className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-              <span className="text-xs text-blue-400 font-sans font-medium">Listening</span>
+              <span className="text-xs text-blue-400 font-sans font-medium">{t("story.listeningIndicator")}</span>
             </div>
           )}
           {isNoResponse && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-400/30">
               <Mic className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span className="text-xs text-amber-400 font-sans font-medium">Waiting…</span>
+              <span className="text-xs text-amber-400 font-sans font-medium">{t("story.waitingIndicator")}</span>
             </div>
           )}
           {settings.blindMode && isSpeaking && (
@@ -1114,7 +1118,7 @@ export default function Story() {
               size="icon"
               className="text-primary animate-pulse"
               onClick={() => voice.stopSpeaking()}
-              aria-label="Stop reading"
+              aria-label={t("story.stopStoryAria")}
               data-testid="button-stop-reading"
             >
               <Volume2 className="w-5 h-5" />
@@ -1128,8 +1132,8 @@ export default function Story() {
               size="icon"
               className="text-muted-foreground hover:text-foreground"
               onClick={handleRefreshListening}
-              aria-label="Refresh listening"
-              title="Restart speech recognition"
+              aria-label={t("story.refreshListening")}
+              title={t("story.restartListening")}
               data-testid="button-refresh-listening"
             >
               <RefreshCw className="w-5 h-5" />
@@ -1148,9 +1152,9 @@ export default function Story() {
             onClick={() =>
               updateSettings({ blindMode: !settings.blindMode })
             }
-            aria-label={settings.blindMode ? "Disable blind mode" : "Enable blind mode"}
+            aria-label={settings.blindMode ? t("story.disableBlindMode") : t("story.enableBlindMode")}
             aria-pressed={settings.blindMode}
-            title={settings.blindMode ? "Blind mode: ON" : "Blind mode: OFF"}
+            title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
             data-testid="button-toggle-blind-mode"
           >
             {settings.blindMode ? (
@@ -1176,14 +1180,14 @@ export default function Story() {
             }
             aria-label={
               settings.playUserTranscription
-                ? "Disable playback of your words"
-                : "Enable playback of your words"
+                ? t("story.disablePlayback")
+                : t("story.enablePlayback")
             }
             aria-pressed={settings.playUserTranscription}
             title={
               settings.playUserTranscription
-                ? "Playing back your words: ON"
-                : "Playing back your words: OFF"
+                ? t("story.playbackOn")
+                : t("story.playbackOff")
             }
             data-testid="button-toggle-playback"
           >
@@ -1210,14 +1214,14 @@ export default function Story() {
             }
             aria-label={
               settings.gameMode === "manual"
-                ? "Switch to auto AI turns"
-                : "Switch to manual AI turns"
+                ? t("story.switchToAutoAi")
+                : t("story.switchToManualAi")
             }
             aria-pressed={settings.gameMode === "manual"}
             title={
               settings.gameMode === "manual"
-                ? "AI turn: manual (tap spark to reply)"
-                : "AI turn: auto (AI replies automatically)"
+                ? t("story.aiModeManual")
+                : t("story.aiModeAuto")
             }
             data-testid="button-toggle-game-mode"
           >
@@ -1230,7 +1234,7 @@ export default function Story() {
 
           {/* Quick STT (speech recognition) language picker */}
           <SttLanguageSwitcher
-            label="You"
+            label={t("story.labelYou")}
             value={settings.stt.language}
             onChange={(lang) =>
               updateSettings({ stt: { ...settings.stt, language: lang } })
@@ -1241,7 +1245,7 @@ export default function Story() {
               `language` field sent on every AI completion request. */}
           <SttLanguageSwitcher
             variant="ai"
-            label="AI"
+            label={t("story.labelAI")}
             value={settings.stt.aiLanguage}
             onChange={(lang) =>
               updateSettings({ stt: { ...settings.stt, aiLanguage: lang } })
@@ -1253,7 +1257,7 @@ export default function Story() {
               paragraph. The TTS Play Order dialog (next icon) governs
               which of these are also spoken and in what order. */}
           <ViewLanguagesSwitcher
-            label="View"
+            label={t("story.labelView")}
             value={settings.viewLanguages}
             onChange={(langs) =>
               updateSettings({
@@ -1289,9 +1293,9 @@ export default function Story() {
                 ? "text-primary"
                 : "text-muted-foreground hover:text-foreground",
             )}
-            aria-label={isPlayingStory ? "Stop reading story" : "Play story"}
+            aria-label={isPlayingStory ? t("story.stopStoryAria") : t("story.playStoryAria")}
             aria-pressed={isPlayingStory}
-            title={isPlayingStory ? "Stop reading" : "Play story aloud"}
+            title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
             data-testid="button-play-story"
           >
             {isPlayingStory ? (
@@ -1312,7 +1316,7 @@ export default function Story() {
                   : "text-muted-foreground hover:text-foreground",
               )}
               onClick={() => setDebugPanelOpen((v) => !v)}
-              aria-label={debugPanelOpen ? "Close debug panel" : "Open debug panel"}
+              aria-label={debugPanelOpen ? t("story.debugClose") : t("story.debugOpen")}
               title="Debug panel (requests & responses)"
             >
               <Bug className="w-4 h-4" />
@@ -1346,7 +1350,7 @@ export default function Story() {
               setActionError(null);
             }}
             className="shrink-0 hover:opacity-70 transition-opacity"
-            aria-label="Dismiss error"
+            aria-label={t("story.dismissError")}
             data-testid="button-dismiss-error"
           >
             <X className="w-5 h-5" />
@@ -1367,12 +1371,12 @@ export default function Story() {
               style={{ fontFamily: "'Caveat', cursive", color: "#E65C40" }}
             >
               {settings.blindMode
-                ? "Blind mode is on — speak your opening paragraph!"
-                : "The first page is blank…"}
+                ? t("story.blindModeHint")
+                : t("story.firstPageBlank")}
             </p>
             {!settings.blindMode && (
               <p className="text-muted-foreground font-sans text-sm">
-                Write your opening paragraph below to begin the adventure!
+                {t("story.writeOpeningHint")}
               </p>
             )}
           </div>
@@ -1427,7 +1431,7 @@ export default function Story() {
                       className="h-8 text-muted-foreground hover:text-foreground font-sans text-xs"
                     >
                       <X className="w-3.5 h-3.5 mr-1" />
-                      Cancel
+                      {t("story.cancelEdit")}
                     </Button>
                     <Button
                       size="sm"
@@ -1436,7 +1440,7 @@ export default function Story() {
                       className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-sans text-xs"
                     >
                       <Check className="w-3.5 h-3.5 mr-1" />
-                      Save
+                      {t("story.saveEdit")}
                     </Button>
                   </div>
                 </div>
@@ -1460,7 +1464,7 @@ export default function Story() {
                         handlePlayMessage(msg, PLAY_ORIGINAL);
                       }
                     }}
-                    aria-label="Play this passage from the original"
+                    aria-label={t("story.playPassage")}
                     data-testid={`message-original-${msg.id}`}
                     data-playing={
                       playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
@@ -1508,7 +1512,7 @@ export default function Story() {
                         <span
                           className="px-1.5 py-0.5 rounded bg-muted/40"
                           data-testid={`message-language-${msg.id}`}
-                          title="Language this passage was authored in"
+                          title={t("story.passageLanguageTitle")}
                         >
                           {msg.language}
                         </span>
@@ -1517,7 +1521,7 @@ export default function Story() {
                         <span
                           className="px-1.5 py-0.5 rounded bg-muted/40"
                           data-testid={`message-model-${msg.id}`}
-                          title="AI model that generated this passage"
+                          title={t("story.passageModelTitle")}
                         >
                           {msg.model}
                         </span>
@@ -1529,13 +1533,13 @@ export default function Story() {
                       onClick={() => handlePlayMessage(msg)}
                       aria-label={
                         playingMsgId === msg.id
-                          ? "Stop reading this passage"
-                          : "Read this passage aloud"
+                          ? t("story.stopReadPassage")
+                          : t("story.readPassage")
                       }
                       title={
                         playingMsgId === msg.id
-                          ? "Stop reading this passage"
-                          : "Read this passage aloud"
+                          ? t("story.stopReadPassage")
+                          : t("story.readPassage")
                       }
                       data-testid={`button-play-message-${msg.id}`}
                       className={cn(
@@ -1553,7 +1557,7 @@ export default function Story() {
                     </button>
                     <button
                       onClick={() => startEdit(msg.id, msg.content)}
-                      aria-label="Edit passage"
+                      aria-label={t("story.editPassage")}
                       data-testid={`button-edit-message-${msg.id}`}
                       className="text-muted-foreground hover:text-primary p-1 rounded"
                     >
@@ -1562,8 +1566,8 @@ export default function Story() {
                     <button
                       onClick={() => handleRegenerateMessage(msg.id)}
                       disabled={regeneratingMsgId !== null}
-                      aria-label="Regenerate passage with AI"
-                      title="Regenerate this paragraph with AI"
+                      aria-label={t("story.regeneratePassage")}
+                      title={t("story.regenerateTitle")}
                       data-testid={`button-regenerate-message-${msg.id}`}
                       className="text-muted-foreground hover:text-primary p-1 rounded disabled:opacity-30"
                     >
@@ -1576,7 +1580,7 @@ export default function Story() {
                     <button
                       onClick={() => handleDeleteMessage(msg.id)}
                       disabled={deleteMessage.isPending}
-                      aria-label="Delete passage"
+                      aria-label={t("story.deletePassage")}
                       data-testid={`button-delete-message-${msg.id}`}
                       className="text-muted-foreground hover:text-destructive p-1 rounded disabled:opacity-30"
                     >
@@ -1595,7 +1599,7 @@ export default function Story() {
               <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
             <div className="italic text-muted-foreground font-serif">
-              ✨ Your co-author is writing
+              {t("story.aiComposing")}
               {streamedContent ? `… ${streamedContent}` : "…"}
               <span className="inline-block w-1.5 h-5 ml-1 align-middle bg-[#82C3DF]/60 animate-pulse rounded-sm"></span>
             </div>
@@ -1621,12 +1625,12 @@ export default function Story() {
               )}
               <p className="text-center text-sm font-sans text-muted-foreground italic">
                 {isTyping
-                  ? "Your co-author is writing…"
+                  ? t("story.coAuthorWriting")
                   : isSpeaking
-                  ? "Reading the story aloud…"
+                  ? t("story.readingAloud")
                   : isListening
-                  ? "Listening… speak your paragraph."
-                  : blindStatus || "Ready."}
+                  ? t("story.listeningSpeak")
+                  : blindStatus || t("story.ready")}
               </p>
             </div>
 
@@ -1647,10 +1651,10 @@ export default function Story() {
               onKeyDown={handleKeyDown}
               placeholder={
                 isTyping
-                  ? "Your co-author is writing…"
+                  ? t("story.composerPlaceholderTyping")
                   : isListening
-                  ? "Listening… speak now"
-                  : "Write your next paragraph… (Cmd+Enter to send)"
+                  ? t("story.composerPlaceholderListening")
+                  : t("story.composerPlaceholder")
               }
               disabled={isTyping}
               className="min-h-[80px] sm:min-h-[120px] resize-none pe-24 font-serif text-base sm:text-lg leading-relaxed bg-background border-2 border-dashed border-[#FFB84D]/50 rounded-xl focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
@@ -1660,7 +1664,7 @@ export default function Story() {
             {isListening && interimTranscript && (
               <div className="absolute top-2 start-3 end-24 pointer-events-none">
                 <span className="text-[10px] font-sans text-blue-400/80 uppercase tracking-wider">
-                  Listening
+                  {t("story.listeningIndicator")}
                   <span className="inline-block w-1 h-3 ml-1 align-middle bg-blue-400/60 animate-pulse rounded-sm" />
                 </span>
               </div>
@@ -1669,7 +1673,7 @@ export default function Story() {
               <div className="absolute top-2 start-3 pointer-events-none">
                 <span className="text-[10px] font-sans text-blue-400/70 uppercase tracking-wider flex items-center gap-1">
                   <Mic className="w-2.5 h-2.5" />
-                  Listening…
+                  {t("story.listeningEllipsis")}
                 </span>
               </div>
             )}
@@ -1685,8 +1689,8 @@ export default function Story() {
                     ? "bg-blue-500/20 border-blue-400/50 text-blue-400 animate-pulse"
                     : "text-muted-foreground hover:text-foreground"
                 )}
-                aria-label={isListening ? "Stop dictation" : "Dictate"}
-                title={isListening ? "Tap to stop recording" : "Tap to dictate"}
+                aria-label={isListening ? t("story.stopDictation") : t("story.dictate")}
+                title={isListening ? t("story.tapToStop") : t("story.tapToDictate")}
               >
                 <Mic className="w-4 h-4" />
               </Button>
@@ -1696,7 +1700,7 @@ export default function Story() {
                 disabled={!draft.trim() || isTyping}
                 className="h-9 w-9 sm:h-10 sm:w-10 rounded-full text-white transition-transform duration-150 hover:-translate-y-0.5 active:translate-y-0.5"
                 style={{ backgroundColor: "#E65C40", boxShadow: "0 4px 0 0 #C54A32" }}
-                aria-label="Send your paragraph"
+                aria-label={t("story.sendParagraph")}
               >
                 <Send className="w-4 h-4 ms-0.5" />
               </Button>
@@ -1707,11 +1711,11 @@ export default function Story() {
                   data-testid="button-ai-turn"
                   className="h-9 sm:h-10 px-2 sm:px-4 rounded-full text-amber-950 font-bold transition-transform duration-150 hover:-translate-y-0.5 active:translate-y-0.5 gap-1.5"
                   style={{ fontFamily: "'Nunito', sans-serif", backgroundColor: "#FFB84D", boxShadow: "0 4px 0 0 #D4962B" }}
-                  aria-label="Request AI turn"
-                  title="Ask the AI to write the next paragraph"
+                  aria-label={t("story.requestAiTurn")}
+                  title={t("story.askAiTitle")}
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span className="hidden sm:inline">AI turn</span>
+                  <span className="hidden sm:inline">{t("story.aiTurnBtn")}</span>
                 </Button>
               )}
             </div>
@@ -1724,5 +1728,6 @@ export default function Story() {
         onClose={() => setDebugPanelOpen(false)}
       />
     </div>
+    </I18nProvider>
   );
 }

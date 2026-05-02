@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { type StorySettings } from "@/hooks/use-settings";
 import { STT_LANGUAGES } from "@/config/stt";
+import { useT } from "@/lib/i18n-context";
 
 interface Props {
   settings: StorySettings;
@@ -31,20 +32,10 @@ const RATE_MIN = 0.5;
 const RATE_MAX = 2.0;
 const RATE_STEP = 0.05;
 
-/**
- * Dialog for configuring per-language text-to-speech playback speed.
- *
- * The story page reads each saved message in its own BCP-47 language; this
- * view lets the user pick any STT-supported language and override the
- * playback rate just for that one. Languages without an explicit override
- * use `ttsRateDefault`. Saved overrides are listed below so they can be
- * inspected and removed individually.
- */
 export function TtsSpeedDialog({ settings, onSave }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<StorySettings>(settings);
-  // Which language the per-language slider is currently editing. Defaults to
-  // the user's STT language so the most common case is one click away.
   const [editingLang, setEditingLang] = useState<string>(
     settings.stt.language || "en-US",
   );
@@ -62,8 +53,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
     setOpen(false);
   };
 
-  const currentRate =
-    local.ttsRates[editingLang] ?? local.ttsRateDefault;
+  const currentRate = local.ttsRates[editingLang] ?? local.ttsRateDefault;
 
   const setRateForEditingLang = (rate: number) => {
     setLocal((p) => ({
@@ -80,7 +70,6 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
     });
   };
 
-  // Build a label lookup once so the override list shows friendly names.
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
     for (const l of STT_LANGUAGES) map[l.code] = l.label;
@@ -100,8 +89,8 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
           variant="ghost"
           size="icon"
           className="text-muted-foreground hover:text-foreground"
-          aria-label="Playback speed settings"
-          title="Playback speed per language"
+          aria-label={t("ttsSpeed.ariaLabel")}
+          title={t("ttsSpeed.triggerTitle")}
           data-testid="button-tts-speed-settings"
         >
           <Gauge className="w-5 h-5" />
@@ -110,11 +99,10 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>
-            Playback Speed
+            {t("ttsSpeed.title")}
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
-            Set the text-to-speech rate per language. Each saved message
-            plays back in its own language at the speed you configure here.
+            {t("ttsSpeed.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -123,7 +111,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
           <div className="space-y-2 rounded-lg border border-border/60 bg-background px-4 py-3">
             <div className="flex justify-between items-center">
               <Label htmlFor="ttsRateDefault" className="text-sm font-medium">
-                Default speed
+                {t("ttsSpeed.defaultSpeed")}
               </Label>
               <span className="text-sm tabular-nums text-muted-foreground">
                 {local.ttsRateDefault.toFixed(2)}×
@@ -142,18 +130,18 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              Used for any language without its own override below.
+              {t("ttsSpeed.defaultSpeedHint")}
             </p>
           </div>
 
           {/* Per-language editor */}
           <div className="space-y-3 pt-2 border-t border-border/40">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Per-Language Override
+              {t("ttsSpeed.perLangOverride")}
             </p>
 
             <div className="space-y-1.5">
-              <Label htmlFor="ttsRateLang">Language</Label>
+              <Label htmlFor="ttsRateLang">{t("ttsSpeed.language")}</Label>
               <Select value={editingLang} onValueChange={setEditingLang}>
                 <SelectTrigger
                   id="ttsRateLang"
@@ -178,12 +166,12 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Label htmlFor="ttsRateForLang" className="text-sm">
-                  Speed for {labelByCode[editingLang] ?? editingLang}
+                  {t("ttsSpeed.speedFor", labelByCode[editingLang] ?? editingLang)}
                 </Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {currentRate.toFixed(2)}×
                   {!hasExplicitOverride && (
-                    <span className="ml-1 text-xs italic">(default)</span>
+                    <span className="ml-1 text-xs italic">{t("ttsSpeed.default")}</span>
                   )}
                 </span>
               </div>
@@ -207,7 +195,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
                   data-testid="button-clear-tts-override"
                 >
                   <Trash2 className="w-3 h-3 mr-1" />
-                  Use default for this language
+                  {t("ttsSpeed.useDefault")}
                 </Button>
               )}
             </div>
@@ -217,7 +205,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
           {overrideEntries.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-border/40">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Current Overrides
+                {t("ttsSpeed.currentOverrides")}
               </p>
               <ul className="space-y-1">
                 {overrideEntries.map(([code, rate]) => (
@@ -241,7 +229,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
                         size="icon"
                         onClick={() => clearOverride(code)}
                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove override for ${code}`}
+                        aria-label={t("ttsSpeed.removeOverride", code)}
                         data-testid={`button-remove-tts-override-${code}`}
                       >
                         <Trash2 className="w-3 h-3" />
@@ -260,7 +248,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
             onClick={() => setOpen(false)}
             className="rounded-full font-sans border-2"
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             onClick={handleSave}
@@ -268,7 +256,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
             style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
             data-testid="button-save-tts-speed"
           >
-            Save
+            {t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>

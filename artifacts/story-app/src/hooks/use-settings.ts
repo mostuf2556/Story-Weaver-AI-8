@@ -18,6 +18,9 @@ export const PLAY_ORIGINAL = "original" as const;
  */
 export type TtsTranslationMode = "off" | "with" | "only";
 
+/** BCP-47 primary language subtags supported as UI language. */
+export type UiLanguage = "en" | "he";
+
 export interface StorySettings {
   model: string;
   maxTokens: number;
@@ -78,6 +81,11 @@ export interface StorySettings {
    */
   aiMaxRetries: number;
   /**
+   * Language used for all UI text (dialogs, labels, buttons).
+   * Independent of the story / AI language. Defaults to "he" (Hebrew).
+   */
+  uiLanguage: UiLanguage;
+  /**
    * Schema version for the persisted settings blob. Bumped whenever a
    * default changes in a way that should overwrite a previously saved
    * value (e.g. when a default was wrong and the user almost certainly
@@ -118,6 +126,7 @@ const DEFAULTS: StorySettings = {
   ttsRateDefault: 0.95,
   ttsVoices: {},
   aiMaxRetries: 3,
+  uiLanguage: "he",
   settingsVersion: SETTINGS_VERSION,
 };
 

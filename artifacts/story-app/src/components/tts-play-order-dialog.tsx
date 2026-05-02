@@ -16,43 +16,24 @@ import {
   type StorySettings,
 } from "@/hooks/use-settings";
 import { STT_LANGUAGES } from "@/config/stt";
+import { useT } from "@/lib/i18n-context";
 
 interface Props {
   settings: StorySettings;
   onSave: (patch: Partial<StorySettings>) => void;
 }
 
-/**
- * Header dialog for configuring the order in which the original paragraph
- * and each on-screen translation are spoken when the user presses Play.
- *
- * The model is intentionally simple: a single ordered list. Each entry is
- * either {@link PLAY_ORIGINAL} or a BCP-47 code from `viewLanguages`.
- * Items present in the list are spoken in order; items absent are
- * skipped. This subsumes the prior "off / both / only" enum because the
- * three states are expressible as orderings (just original / original +
- * translations / just translations).
- *
- * Edits are buffered in local state and only committed on Save so the
- * user can experiment with the order without triggering re-renders /
- * playback changes mid-edit.
- */
 export function TtsPlayOrderDialog({ settings, onSave }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
-  // Local working copy. Always reconciled against the current
-  // viewLanguages whenever the dialog opens so removed/added view
-  // languages show up correctly even if the order was never saved.
   const [order, setOrder] = useState<string[]>(settings.ttsPlayOrder);
 
-  // Friendly label lookup (e.g. "en-US" → "English (US)") for the rows.
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
     for (const l of STT_LANGUAGES) map[l.code] = l.label;
     return map;
   }, []);
 
-  // Reset the working copy every time the dialog opens so it reflects
-  // the latest persisted settings (and any view-language drift).
   useEffect(() => {
     if (open) {
       setOrder(syncPlayOrderForView(settings.ttsPlayOrder, settings.viewLanguages));
@@ -61,7 +42,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
 
   const renderLabel = (item: string) =>
     item === PLAY_ORIGINAL
-      ? "Original (source language)"
+      ? t("playOrder.original")
       : `${labelByCode[item] ?? item}`;
 
   const move = (idx: number, delta: number) => {
@@ -87,8 +68,6 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
     setOpen(false);
   };
 
-  // Items the user could add: original + every selected view language
-  // that isn't already in the order.
   const addable = [PLAY_ORIGINAL, ...settings.viewLanguages].filter(
     (item) => !order.includes(item),
   );
@@ -100,8 +79,8 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
           variant="ghost"
           size="icon"
           className="text-muted-foreground hover:text-foreground"
-          aria-label="Playback order settings"
-          title="Set the order of TTS playback"
+          aria-label={t("playOrder.ariaLabel")}
+          title={t("playOrder.triggerTitle")}
           data-testid="button-tts-play-order"
         >
           <ListOrdered className="w-5 h-5" />
@@ -110,21 +89,17 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>
-            Playback Order
+            {t("playOrder.title")}
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
-            Choose what gets spoken when you press Play and in which order.
-            Use the arrows to reorder, the X to skip an item, and the
-            buttons below to add the original or any displayed translation
-            back into the queue.
+            {t("playOrder.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Ordered list */}
           {order.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/60 bg-background px-4 py-6 text-center text-sm text-muted-foreground">
-              Nothing will be spoken. Add at least one item below.
+              {t("playOrder.empty")}
             </div>
           ) : (
             <ol className="space-y-1.5">
@@ -155,7 +130,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                       className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       onClick={() => move(idx, -1)}
                       disabled={idx === 0}
-                      aria-label={`Move ${renderLabel(item)} up`}
+                      aria-label={t("playOrder.moveUp", renderLabel(item))}
                       data-testid={`button-tts-order-up-${item}`}
                     >
                       <ArrowUp className="w-4 h-4" />
@@ -167,7 +142,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                       className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       onClick={() => move(idx, 1)}
                       disabled={idx === order.length - 1}
-                      aria-label={`Move ${renderLabel(item)} down`}
+                      aria-label={t("playOrder.moveDown", renderLabel(item))}
                       data-testid={`button-tts-order-down-${item}`}
                     >
                       <ArrowDown className="w-4 h-4" />
@@ -178,7 +153,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => remove(item)}
-                      aria-label={`Remove ${renderLabel(item)} from playback`}
+                      aria-label={t("playOrder.remove", renderLabel(item))}
                       data-testid={`button-tts-order-remove-${item}`}
                     >
                       <X className="w-4 h-4" />
@@ -189,11 +164,10 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
             </ol>
           )}
 
-          {/* Addable items (original or view languages not in the order) */}
           {addable.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-border/40">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Add to Order
+                {t("playOrder.addToOrder")}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {addable.map((item) => (
@@ -216,8 +190,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
 
           {settings.viewLanguages.length === 0 && (
             <p className="text-xs text-muted-foreground italic">
-              Tip: pick one or more languages from the View dropdown to be
-              able to add translations to the playback order.
+              {t("playOrder.tip")}
             </p>
           )}
         </div>
@@ -228,7 +201,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
             onClick={() => setOpen(false)}
             className="rounded-full font-sans border-2"
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             onClick={handleSave}
@@ -236,7 +209,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
             style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
             data-testid="button-save-tts-play-order"
           >
-            Save
+            {t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>
