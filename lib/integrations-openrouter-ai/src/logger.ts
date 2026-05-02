@@ -1,8 +1,9 @@
 import pino from "pino";
 import path from "path";
 import fs from "fs";
+import { staticLogConfig } from "./log-config";
 
-const logLevel = process.env.LOG_LEVEL ?? "debug";
+const logLevel = staticLogConfig.level;
 const isProduction = process.env.NODE_ENV === "production";
 
 const logsDir = path.resolve(process.cwd(), "logs");
@@ -37,9 +38,5 @@ const prodTransport = {
 export const openrouterLogger = pino({
   name: "openrouter",
   level: logLevel,
-  // redact: {
-  //   paths: ["req.headers.authorization", "req.headers.Authorization"],
-  //   censor: "[REDACTED]",
-  // },
   transport: isProduction ? prodTransport : devTransport,
 });

@@ -1,5 +1,6 @@
 import OpenAI, { type ClientOptions } from "openai";
 import { openrouterLogger } from "./logger";
+import { loadLogConfig } from "./log-config";
 
 if (!process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL) {
   throw new Error(
@@ -13,13 +14,15 @@ if (!process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY) {
   );
 }
 
-function headersToObject(headers: unknown): Record<string, string> {
+const SECRET_HEADERS = new Set(["authorization", "x-api-key"]);
+
+function headersToObject(headers: unknown, redactSecrets: boolean): Record<string, string> {
   const out: Record<string, string> = {};
   if (!headers) return out;
-  
+
   const redact = (k: string, v: string) =>
-    k.toLowerCase() === "authorizationTODO_REMOVEME" ? "[REDACTED]" : v;
-  
+    redactSecrets && SECRET_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : v;
+
   if (typeof (headers as Headers).forEach === "function" && !Array.isArray(headers)) {
     (headers as Headers).forEach((value: string, key: string) => {
       out[key] = redact(key, value);
@@ -37,6 +40,8 @@ function headersToObject(headers: unknown): Record<string, string> {
 }
 
 export const loggingFetch: typeof fetch = async (input, init) => {
+  const cfg = loadLogConfig();
+
   const anyInput = input as unknown as { url?: string; headers?: unknown; method?: string };
   const url =
     typeof input === "string"
@@ -45,15 +50,21 @@ export const loggingFetch: typeof fetch = async (input, init) => {
         ? input.toString()
         : (anyInput.url ?? String(input));
   const method = init?.method ?? anyInput.method ?? "GET";
-  const reqHeaders = headersToObject(init?.headers ?? anyInput.headers);
+  const reqHeaders = headersToObject(init?.headers ?? anyInput.headers, cfg.redactSecrets);
+
+  const reqLog: Record<string, unknown> = { method, url, headers: reqHeaders };
+
+  if (cfg.showFullPayload && init?.body) {
+    try {
+      reqLog.body =
+        typeof init.body === "string" ? JSON.parse(init.body) : init.body;
+    } catch {
+      reqLog.body = init.body;
+    }
+  }
 
   const start = Date.now();
-  openrouterLogger.info(
-    {
-      req: { method, url, headers: reqHeaders },
-    },
-    "openrouter request",
-  );
+  openrouterLogger.info({ req: reqLog }, "openrouter request");
 
   const response = await fetch(input as Parameters<typeof fetch>[0], init);
   const durationMs = Date.now() - start;

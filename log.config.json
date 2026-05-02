@@ -1,0 +1,21 @@
+{
+  "_comment": "Central log configuration. Restart the API server to apply changes.",
+
+  "level": "debug",
+
+  "showFullPayload": false,
+
+  "redactSecrets": true,
+
+  "body": {
+    "maxStringLength": 2000,
+    "maxArrayLength": 20,
+    "maxDepth": 4
+  },
+
+  "openrouterMessages": {
+    "previewHead": 2,
+    "previewTail": 2,
+    "maxCharsPerMessage": 240
+  }
+}

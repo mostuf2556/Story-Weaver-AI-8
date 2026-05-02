@@ -26,6 +26,7 @@ import {
 } from "@workspace/integrations-openrouter-ai";
 import OpenAI from "openai";
 import { logger } from "../../lib/logger";
+import { loadLogConfig } from "@workspace/integrations-openrouter-ai";
 
 interface AppConfig {
   openrouter?: {
@@ -78,31 +79,34 @@ function logOpenRouterRequest(
     messages: Array<{ role: string; content: string }>;
   },
 ): void {
+  const cfg = loadLogConfig();
+  const { showFullPayload, openrouterMessages: mc } = cfg;
+
   const totalChars = payload.messages.reduce(
     (n, m) => n + (m.content?.length ?? 0),
     0,
   );
-  const PREVIEW_HEAD = 2;
-  const PREVIEW_TAIL = 2;
-  const PREVIEW_CHARS = 240;
+
   const trimMsg = (m: { role: string; content: string }) => ({
     role: m.role,
     content:
-      (m.content ?? "").length > PREVIEW_CHARS
-        ? (m.content ?? "").slice(0, PREVIEW_CHARS) +
-          `…(+${(m.content ?? "").length - PREVIEW_CHARS} chars)`
+      !showFullPayload && (m.content ?? "").length > mc.maxCharsPerMessage
+        ? (m.content ?? "").slice(0, mc.maxCharsPerMessage) +
+          `…(+${(m.content ?? "").length - mc.maxCharsPerMessage} chars)`
         : m.content,
   });
+
   let messagesPreview: unknown;
-  if (payload.messages.length <= PREVIEW_HEAD + PREVIEW_TAIL) {
+  if (showFullPayload || payload.messages.length <= mc.previewHead + mc.previewTail) {
     messagesPreview = payload.messages.map(trimMsg);
   } else {
     messagesPreview = [
-      ...payload.messages.slice(0, PREVIEW_HEAD).map(trimMsg),
-      `…(+${payload.messages.length - PREVIEW_HEAD - PREVIEW_TAIL} more)`,
-      ...payload.messages.slice(-PREVIEW_TAIL).map(trimMsg),
+      ...payload.messages.slice(0, mc.previewHead).map(trimMsg),
+      `…(+${payload.messages.length - mc.previewHead - mc.previewTail} more)`,
+      ...payload.messages.slice(-mc.previewTail).map(trimMsg),
     ];
   }
+
   logger.info(
     {
       source,
