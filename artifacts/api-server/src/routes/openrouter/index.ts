@@ -1006,7 +1006,10 @@ router.post(
 
     logger.info({ imagePrompt }, "generate-image: calling image model");
 
-    // Step 2: Call the image generation endpoint on OpenRouter
+    // Step 2: Call the chat completions endpoint — the Replit OpenRouter
+    // integration proxy only supports /chat/completions. Image models such as
+    // flux-schnell return the generated image URL inside the assistant message
+    // content (plain URL, markdown image, or a content-part array).
     const resolvedKey =
       body.apiKey?.trim() ||
       cfg.openrouter?.apiKey?.trim() ||
@@ -1018,10 +1021,10 @@ router.post(
       process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL ||
       "https://openrouter.ai/api/v1";
     const imageModel = body.imageModel || "black-forest-labs/flux-schnell:free";
-    const imageApiUrl = resolvedBaseUrl.replace(/\/$/, "") + "/images/generations";
+    const chatApiUrl = resolvedBaseUrl.replace(/\/$/, "") + "/chat/completions";
 
     try {
-      const imgResp = await fetch(imageApiUrl, {
+      const imgResp = await fetch(chatApiUrl, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${resolvedKey}`,
@@ -1031,9 +1034,7 @@ router.post(
         },
         body: JSON.stringify({
           model: imageModel,
-          prompt: imagePrompt,
-          n: 1,
-          response_format: "url",
+          messages: [{ role: "user", content: imagePrompt }],
         }),
       });
 
@@ -1050,15 +1051,57 @@ router.post(
       }
 
       const imgData = (await imgResp.json()) as {
+        choices?: Array<{
+          message?: {
+            content?: string | Array<{ type: string; image_url?: { url: string }; text?: string }>;
+          };
+        }>;
         data?: Array<{ url?: string; b64_json?: string }>;
       };
-      const imageUrl =
-        imgData.data?.[0]?.url ??
-        (imgData.data?.[0]?.b64_json
-          ? `data:image/png;base64,${imgData.data[0].b64_json}`
-          : null);
+
+      // Extract image URL from whichever format the model returned
+      let imageUrl: string | null = null;
+
+      // Format A: standard /images/generations style (some proxies wrap it)
+      if (imgData.data?.[0]?.url) {
+        imageUrl = imgData.data[0].url;
+      } else if (imgData.data?.[0]?.b64_json) {
+        imageUrl = `data:image/png;base64,${imgData.data[0].b64_json}`;
+      } else {
+        const rawContent = imgData.choices?.[0]?.message?.content;
+
+        if (Array.isArray(rawContent)) {
+          // Format B: content-part array  [{ type:"image_url", image_url:{url} }]
+          for (const part of rawContent) {
+            if (part.type === "image_url" && part.image_url?.url) {
+              imageUrl = part.image_url.url;
+              break;
+            }
+          }
+        } else if (typeof rawContent === "string") {
+          // Format C: plain URL string
+          if (/^https?:\/\//.test(rawContent.trim())) {
+            imageUrl = rawContent.trim();
+          }
+          // Format D: markdown  ![...](url)
+          if (!imageUrl) {
+            const mdMatch = rawContent.match(/!\[.*?\]\((https?:\/\/[^)]+)\)/);
+            if (mdMatch) imageUrl = mdMatch[1];
+          }
+          // Format E: bare URL anywhere in the text
+          if (!imageUrl) {
+            const urlMatch = rawContent.match(/https?:\/\/\S+/);
+            if (urlMatch) imageUrl = urlMatch[0];
+          }
+          // Format F: base64 data-URI
+          if (!imageUrl && rawContent.startsWith("data:image/")) {
+            imageUrl = rawContent.trim();
+          }
+        }
+      }
 
       if (!imageUrl) {
+        logger.warn({ imgData }, "generate-image: could not extract URL from response");
         res.status(502).json({ error: "Image generation returned no result" });
         return;
       }
