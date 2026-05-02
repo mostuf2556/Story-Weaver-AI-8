@@ -50,6 +50,18 @@ export interface ListenOptions {
    * noisy environments. Default 0 (disabled).
    */
   maxSpeechMs?: number;
+  /**
+   * Called repeatedly as speech is being recognised (interim results).
+   * Receives the best-guess transcript so far (final + current interim).
+   */
+  onInterim?: (partial: string) => void;
+  /**
+   * How many ms before the silence cutoff to fire `onSilenceWarning`.
+   * Default 0 (disabled). Typical value: 1500.
+   */
+  silenceWarningMs?: number;
+  /** Called `silenceWarningMs` before the silence cutoff fires. */
+  onSilenceWarning?: () => void;
 }
 
 export function useVoice(enabled: boolean) {
@@ -79,7 +91,6 @@ export function useVoice(enabled: boolean) {
       const target = lang.toLowerCase();
       const targetBase = target.split("-")[0];
       
-      // If a preferred voice is specified, try to find an exact match
       if (preferredVoiceName) {
         const preferred = voices.find(
           (v) => v.name.toLowerCase() === preferredVoiceName.toLowerCase()
@@ -87,7 +98,6 @@ export function useVoice(enabled: boolean) {
         if (preferred) return preferred;
       }
       
-      // Fall back to language matching
       const exact = voices.find((v) => v.lang.toLowerCase() === target);
       if (exact) return exact;
       const baseMatch = voices.find(
@@ -98,29 +108,6 @@ export function useVoice(enabled: boolean) {
     [],
   );
 
-  /**
-   * Speak `text` using the browser's SpeechSynthesis API.
-   *
-   * IMPORTANT: `enabled` only gates *listening* (microphone access used by
-   * blind-mode auto-loop). Speaking is always permitted because the page
-   * exposes a Play button on the header and per-message Play buttons that
-   * users invoke explicitly — gating speak on `enabled` made those buttons
-   * silently no-op when blind mode was off.
-   *
-   * @param text     Text to read aloud.
-   * @param language BCP-47 tag for the text (e.g. "en-US"). Determines both
-   *                 the picked voice and the utterance.lang.
-   * @param rate     Playback rate in the SpeechSynthesisUtterance range
-   *                 (~0.5–2.0). Defaults to 0.95 to preserve previous
-   *                 behaviour. Caller-provided rate lets the story page
-   *                 honour per-language playback-speed preferences.
-   * @param opts     Optional callbacks and voice name. `onWord` is invoked for
-   *                 each word boundary the engine reports, mapped from
-   *                 `charIndex` to a 0-based word index over the input text.
-   *                 `voiceName` is a preferred SpeechSynthesisVoice name to use
-   *                 for this language. Browsers that don't fire `onboundary`
-   *                 simply produce no highlights — playback is unaffected.
-   */
   const speak = useCallback(
     (
       text: string,
@@ -131,17 +118,11 @@ export function useVoice(enabled: boolean) {
       return new Promise((resolve) => {
         const synth = synthRef.current;
         if (!synth) {
-          // Help the dev see why speech is silently doing nothing — this
-          // line lands in `logs/client.log` via the console wrapper.
           console.warn("[useVoice.speak] no SpeechSynthesis available");
           resolve();
           return;
         }
 
-        // Pre-compute [start, end) char ranges for every non-whitespace
-        // word in the original text so we can map the engine-reported
-        // `charIndex` back to a 0-based word index. Using the same
-        // splitting strategy the renderer uses keeps indices aligned.
         const wordRanges: Array<[number, number]> = [];
         if (opts?.onWord) {
           const parts = text.split(/(\s+)/);
@@ -155,13 +136,8 @@ export function useVoice(enabled: boolean) {
 
         const buildUtterance = () => {
           const utterance = new SpeechSynthesisUtterance(text);
-          // Clamp to the spec's allowed range so an out-of-bounds value from
-          // settings doesn't silently disable speech.
           utterance.rate = Math.min(Math.max(rate, 0.1), 10);
           utterance.pitch = 1.0;
-          // Critical: without setting `lang` (and ideally a matching voice) the
-          // browser falls back to the system default, which on some machines is
-          // not the language of the text being spoken.
           utterance.lang = language;
           const voice = pickVoice(language, opts?.voiceName);
           if (voice) utterance.voice = voice;
@@ -169,12 +145,8 @@ export function useVoice(enabled: boolean) {
           if (opts?.onWord && wordRanges.length > 0) {
             let lastWordIdx = -1;
             utterance.onboundary = (e: SpeechSynthesisEvent) => {
-              // Some engines emit "sentence" or "punctuation" boundaries too;
-              // ignore everything except word boundaries.
               if (e.name && e.name !== "word") return;
               const ci = e.charIndex ?? 0;
-              // Walk forward from the last reported word — boundaries arrive
-              // monotonically so we don't need to re-scan from the start.
               for (let i = Math.max(lastWordIdx, 0); i < wordRanges.length; i++) {
                 const [s, end] = wordRanges[i];
                 if (ci >= s && ci < end) {
@@ -208,9 +180,6 @@ export function useVoice(enabled: boolean) {
             console.info("[useVoice.speak] onend");
             settle();
           };
-          // SpeechSynthesisErrorEvent.error gives a useful enum like
-          // "interrupted" / "canceled" / "synthesis-failed" — surface it
-          // so silent failures are no longer mysterious.
           utterance.onerror = (e: SpeechSynthesisErrorEvent) => {
             console.warn(`[useVoice.speak] onerror error=${e.error}`);
             settle();
@@ -219,19 +188,12 @@ export function useVoice(enabled: boolean) {
         };
 
         const start = () => {
-          // Chrome occasionally pauses the synth queue when the page has
-          // been backgrounded or when an iframe loses focus; resume() is
-          // a no-op if it's already playing and prevents a class of
-          // "speak silently does nothing" bugs.
           try {
             synth.resume();
           } catch {
-            // ignore — resume isn't supported everywhere
+            // ignore
           }
           const utterance = buildUtterance();
-          // Single-line, easy-to-grep summary of what's about to be spoken.
-          // Emitted once per `voice.speak()` call (NOT per word boundary)
-          // so the log volume stays low even on long stories.
           console.info(
             `[tts-play] lang=${language} speed=${utterance.rate} chars=${text.length}`,
           );
@@ -241,11 +203,6 @@ export function useVoice(enabled: boolean) {
           synth.speak(utterance);
         };
 
-        // Chrome has a long-standing race where calling cancel() and
-        // speak() in the same tick causes the new utterance to fire its
-        // onend immediately with no audio. If the queue is currently
-        // busy we cancel and wait one macrotask before queuing the new
-        // utterance; if it's idle we skip the cancel entirely.
         if (synth.speaking || synth.pending) {
           synth.cancel();
           setTimeout(start, 60);
@@ -269,10 +226,8 @@ export function useVoice(enabled: boolean) {
 
   /**
    * Listen until speech is detected and then `silenceMs` of silence elapses.
-   *
-   * If `nudgeMs` is set and no speech begins within that window, `onNudge` is
-   * called and the timer resets. After `maxNudges` nudges recognition stops and
-   * the promise resolves with whatever transcript was collected (usually "").
+   * Calls `onInterim` repeatedly with the running transcript so callers can
+   * show live partial results. Calls `onSilenceWarning` before the cutoff.
    */
   const listenOnce = useCallback(
     (options: ListenOptions = {}): Promise<string> => {
@@ -283,6 +238,9 @@ export function useVoice(enabled: boolean) {
         onNudge,
         language = "en-US",
         maxSpeechMs = 0,
+        onInterim,
+        silenceWarningMs = 0,
+        onSilenceWarning,
       } = options;
 
       return new Promise((resolve) => {
@@ -306,48 +264,52 @@ export function useVoice(enabled: boolean) {
         let transcript = "";
         let speechDetected = false;
         let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+        let warningTimer: ReturnType<typeof setTimeout> | null = null;
         let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
         let maxSpeechTimer: ReturnType<typeof setTimeout> | null = null;
         let nudgeCount = 0;
 
         const clearAllTimers = () => {
           if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+          if (warningTimer) { clearTimeout(warningTimer); warningTimer = null; }
           if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; }
           if (maxSpeechTimer) { clearTimeout(maxSpeechTimer); maxSpeechTimer = null; }
         };
 
         const resetSilenceTimer = () => {
           if (silenceTimer) clearTimeout(silenceTimer);
+          if (warningTimer) { clearTimeout(warningTimer); warningTimer = null; }
+          // Schedule warning before the silence cutoff fires
+          if (silenceWarningMs > 0 && onSilenceWarning && silenceMs > silenceWarningMs) {
+            warningTimer = setTimeout(() => {
+              onSilenceWarning();
+            }, silenceMs - silenceWarningMs);
+          }
           silenceTimer = setTimeout(() => recognition.stop(), silenceMs);
         };
 
         const scheduleNudge = () => {
           if (!nudgeMs || nudgeMs <= 0) return;
           nudgeTimer = setTimeout(() => {
-            if (speechDetected) return; // speech started, nudge no longer relevant
+            if (speechDetected) return;
             nudgeCount++;
             onNudge?.(nudgeCount);
             if (maxNudges > 0 && nudgeCount >= maxNudges) {
-              // Gave up — stop recognition
               recognition.stop();
             } else {
-              scheduleNudge(); // reschedule for next nudge
+              scheduleNudge();
             }
           }, nudgeMs);
         };
 
         recognition.onstart = () => {
           setState("listening");
-          // Do NOT start the silence timer yet — only start it once speech begins.
-          // Start the nudge timer to detect prolonged silence before first speech.
           scheduleNudge();
         };
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onresult = (e: any) => {
           if (!speechDetected) {
-            // First speech detected — cancel nudge, begin silence detection,
-            // and arm the hard "max speech" cap if configured.
             speechDetected = true;
             if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; }
             if (maxSpeechMs > 0) {
@@ -356,14 +318,20 @@ export function useVoice(enabled: boolean) {
               }, maxSpeechMs);
             }
           }
+          let currentInterim = "";
           let hasContent = false;
           for (let i = e.resultIndex; i < e.results.length; i++) {
             if (e.results[i].isFinal) {
               transcript += e.results[i][0].transcript + " ";
               hasContent = true;
             } else if (e.results[i][0].transcript) {
+              currentInterim += e.results[i][0].transcript;
               hasContent = true;
             }
+          }
+          // Fire interim callback with running best-guess transcript
+          if (onInterim && (transcript || currentInterim)) {
+            onInterim((transcript + currentInterim).trim());
           }
           if (hasContent) resetSilenceTimer();
         };
@@ -386,7 +354,11 @@ export function useVoice(enabled: boolean) {
     [enabled]
   );
 
-  /** Manual listen with streaming interim results (used outside of blind auto-loop). */
+  /**
+   * Manual listen with streaming interim results (used outside of blind auto-loop).
+   * Calls `onResult` for every interim and final result so the caller can
+   * show live transcription in a textarea.
+   */
   const listen = useCallback(
     (
       onResult: (transcript: string) => void,
@@ -404,14 +376,23 @@ export function useVoice(enabled: boolean) {
       const recognition = new Ctor();
       recognitionRef.current = recognition;
       recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.interimResults = true;
       recognition.lang = language;
 
       recognition.onstart = () => setState("listening");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (e: any) => {
-        const t = e.results[0]?.[0]?.transcript ?? "";
-        onResult(t);
+        let finalText = "";
+        let interimText = "";
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) {
+            finalText += e.results[i][0].transcript;
+          } else {
+            interimText += e.results[i][0].transcript;
+          }
+        }
+        // Report final text first; fall back to interim so user sees live progress
+        onResult(finalText || interimText);
       };
       recognition.onend = () => {
         setState("idle");

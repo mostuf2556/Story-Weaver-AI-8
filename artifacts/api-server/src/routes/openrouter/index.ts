@@ -565,23 +565,26 @@ router.post(
     }
 
     if (successCompletion && successContent) {
+      // Use the model name the API actually used (OpenRouter resolves generic
+      // aliases like "openrouter/free" to a specific model and returns it in
+      // the completion object). Fall back to the requested model if absent.
+      const actualModel = successCompletion.model || effectiveModel;
+
       const [inserted] = await db
         .insert(messagesTable)
         .values({
           conversationId,
           role: "assistant",
           content: successContent,
-          // The AI was instructed to respond in `language`; persist that so
-          // TTS playback later reads this paragraph in the matching voice.
           language: language ?? null,
-          // Record the actual model that produced this paragraph so the
-          // UI can display provenance per-message.
-          model: effectiveModel,
+          model: actualModel,
         })
         .returning();
 
       res.status(200).json({
         message: inserted,
+        requestedModel: effectiveModel,
+        actualModel,
         request: requestPayload,
         response: successCompletion,
         attempts,
@@ -749,6 +752,7 @@ router.post(
     );
     let lastError: { status: number; message: string } | null = null;
     let successContent = "";
+    let successCompletion: OpenAI.Chat.Completions.ChatCompletion | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -766,6 +770,7 @@ router.post(
           continue;
         }
         successContent = content;
+        successCompletion = completion;
         break;
       } catch (err) {
         const status =
@@ -789,22 +794,19 @@ router.post(
       return;
     }
 
+    const actualModel = successCompletion?.model || effectiveModel;
+
     const [updated] = await db
       .update(messagesTable)
       .set({
         content: successContent,
-        // Regeneration honoured the requested `language`; record it so the
-        // refreshed paragraph plays back in the right voice next time.
         ...(language !== undefined ? { language: language ?? null } : {}),
-        // The paragraph was just (re)written by `effectiveModel`, so the
-        // stored model attribution must reflect that — otherwise the UI
-        // would still show the old model badge from the prior generation.
-        model: effectiveModel,
+        model: actualModel,
       })
       .where(eq(messagesTable.id, messageId))
       .returning();
 
-    res.status(200).json(updated);
+    res.status(200).json({ ...updated, requestedModel: effectiveModel, actualModel });
   },
 );
 

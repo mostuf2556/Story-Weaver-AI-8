@@ -11,6 +11,10 @@ export interface DebugEntry {
   status: number | null;
   request: unknown;
   response: unknown;
+  /** Model ID that was sent in the request (may be a generic alias). */
+  requestedModel?: string;
+  /** Actual model ID resolved and used by the API (extracted from completion). */
+  actualModel?: string;
   durationMs: number;
 }
 
@@ -41,10 +45,6 @@ function buildOptionsBody(settings?: StorySettings): Record<string, unknown> {
   body.temperature = settings.temperature;
   if (settings.apiKey) body.apiKey = settings.apiKey;
   if (settings.apiUrl) body.apiUrl = settings.apiUrl;
-  // Pin the AI's response language so the AI replies in whatever language
-  // the user has chosen, even if the conversation history is in another
-  // language. We reuse the TTS playback language because the user almost
-  // always wants the spoken voice to match the generated text.
   if (settings.stt?.aiLanguage) body.language = settings.stt.aiLanguage;
   return body;
 }
@@ -65,9 +65,6 @@ export function useStoryStream(conversationId: number, settings?: StorySettings)
     async (content: string): Promise<boolean> => {
       setStreamError(null);
       const endpoint = `/api/openrouter/conversations/${conversationId}/messages`;
-      // Tag the saved user message with the BCP-47 language they were
-      // speaking/typing in. The server stores this so later TTS playback can
-      // pick a matching voice even when the conversation mixes languages.
       const requestBody: Record<string, unknown> = {
         content,
         skipAiCompletion: true,
@@ -147,12 +144,25 @@ export function useStoryStream(conversationId: number, settings?: StorySettings)
     } finally {
       setIsTyping(false);
       invalidate();
+      // Extract model info from response so the debug panel can show
+      // both the requested alias and the actual resolved model name.
+      const res = responseJson as {
+        requestedModel?: string;
+        actualModel?: string;
+        message?: { model?: string };
+      } | null;
       emitDebug({
         endpoint,
         method: "POST",
         status,
         request: requestBody,
         response: responseJson,
+        requestedModel:
+          res?.requestedModel ??
+          (requestBody as { model?: string }).model ??
+          undefined,
+        actualModel:
+          res?.actualModel ?? res?.message?.model ?? undefined,
         durationMs: Math.round(performance.now() - start),
       });
     }

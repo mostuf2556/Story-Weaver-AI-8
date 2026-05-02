@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-export type SoundType = "stt-complete" | "error" | "nudge";
+export type SoundType = "stt-complete" | "error" | "nudge" | "silence-warning";
 
 function createAudioContext(): AudioContext | null {
   try {
@@ -58,6 +58,10 @@ export function useSounds() {
       // Two short pulses — gentle attention-getter for no-response
       playTone(ctx, "sine", 520, 520, now, 0.12, 0.22);
       playTone(ctx, "sine", 520, 520, now + 0.18, 0.12, 0.22);
+    } else if (type === "silence-warning") {
+      // Two soft descending pips — "wrapping up soon" countdown signal
+      playTone(ctx, "sine", 600, 440, now, 0.10, 0.18);
+      playTone(ctx, "sine", 500, 360, now + 0.16, 0.10, 0.15);
     }
   }, []);
 

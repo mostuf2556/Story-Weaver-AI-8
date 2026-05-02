@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bug, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Bug, X, ChevronDown, ChevronRight, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { subscribeDebug, type DebugEntry } from "@/hooks/use-story-stream";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,33 @@ function StatusBadge({ status }: { status: number | null }) {
   );
 }
 
+/** Show model routing: requested alias → actual resolved model. */
+function ModelBadge({ entry }: { entry: DebugEntry }) {
+  if (!entry.requestedModel && !entry.actualModel) return null;
+
+  const requested = entry.requestedModel ?? "";
+  const actual = entry.actualModel ?? "";
+  const isGenericAlias =
+    requested.startsWith("openrouter/") || requested === "auto";
+  const resolved = actual && actual !== requested;
+
+  return (
+    <span className="flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground/80 max-w-[180px] truncate">
+      {isGenericAlias ? (
+        <span className="text-amber-400/90">{requested}</span>
+      ) : (
+        <span>{requested.split("/").pop()}</span>
+      )}
+      {resolved && (
+        <>
+          <ArrowRight className="w-2.5 h-2.5 shrink-0 text-muted-foreground/50" />
+          <span className="text-emerald-400/90">{actual.split("/").pop()}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
 function Entry({ entry }: { entry: DebugEntry }) {
   const [open, setOpen] = useState(false);
   return (
@@ -43,12 +70,39 @@ function Entry({ entry }: { entry: DebugEntry }) {
         <StatusBadge status={entry.status} />
         <span className="font-mono text-muted-foreground">{entry.method}</span>
         <span className="font-mono truncate flex-1">{entry.endpoint}</span>
-        <span className="text-muted-foreground tabular-nums">
+        <ModelBadge entry={entry} />
+        <span className="text-muted-foreground tabular-nums shrink-0">
           {entry.durationMs}ms
         </span>
       </button>
       {open && (
         <div className="px-2 pb-2 space-y-2">
+          {(entry.requestedModel || entry.actualModel) && (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-muted/30 border border-border/30">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                Model
+              </span>
+              <span className="font-mono text-[11px] text-amber-400/90">
+                {entry.requestedModel ?? "—"}
+              </span>
+              {entry.actualModel && entry.actualModel !== entry.requestedModel && (
+                <>
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/50" />
+                  <span className="font-mono text-[11px] text-emerald-400/90">
+                    {entry.actualModel}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60 italic">
+                    (resolved)
+                  </span>
+                </>
+              )}
+              {entry.actualModel === entry.requestedModel && (
+                <span className="text-[10px] text-muted-foreground/60 italic">
+                  (exact match)
+                </span>
+              )}
+            </div>
+          )}
           <div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
               Request

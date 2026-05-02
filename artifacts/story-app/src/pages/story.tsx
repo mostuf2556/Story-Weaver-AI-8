@@ -34,16 +34,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft,
+  Home,
   Send,
   Sparkles,
   PenLine,
   Pencil,
+  Wand2,
   Check,
   X,
   Volume2,
   VolumeX,
   Mic,
-  MicOff,
   Ear,
   EarOff,
   AlertCircle,
@@ -51,6 +52,8 @@ import {
   RefreshCw,
   Play,
   StopCircle,
+  Zap,
+  ZapOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -181,6 +184,8 @@ export default function Story() {
 
   // Composer (normal mode)
   const [draft, setDraft] = useState("");
+  // Live interim voice transcript shown while the mic is active
+  const [interimTranscript, setInterimTranscript] = useState("");
 
   // Blind mode status text shown to the user
   const [blindStatus, setBlindStatus] = useState("");
@@ -705,6 +710,15 @@ export default function Story() {
           maxNudges: cur.stt.maxNudges,
           maxSpeechMs: cur.stt.maxSpeechMs,
           language: cur.stt.language,
+          onInterim: (partial) => {
+            setDraft(partial);
+          },
+          // Warn 1.5 s before the silence cutoff so the user knows time is up
+          silenceWarningMs: 1500,
+          onSilenceWarning: () => {
+            playSound("silence-warning");
+            setBlindStatus("Wrapping up… finishing soon.");
+          },
           onNudge: (n) => {
             playSound("nudge");
             setIsNoResponse(true);
@@ -891,21 +905,32 @@ export default function Story() {
     }
   };
 
-  // Normal mode voice send
+  // Derived voice state — declared here so handleVoiceSend can reference them
+  const isSpeaking = voice.state === "speaking";
+  const isListening = voice.state === "listening";
+
+  // Normal mode voice send — tap once to start, tap again to stop early
   const handleVoiceSend = useCallback(() => {
     if (isTyping) return;
-    const stop = voice.listen(
+    if (isListening) {
+      voice.stopListening();
+      setInterimTranscript("");
+      return;
+    }
+    voice.listen(
       (transcript) => {
+        // Called for both interim and final results — shows live transcription
         setDraft(transcript);
+        setInterimTranscript(transcript);
       },
       async () => {
-        // STT ended — play completion sound
+        // STT ended — play completion sound and clear interim indicator
         playSound("stt-complete");
+        setInterimTranscript("");
       },
       settingsRef.current.stt.language,
     );
-    return stop;
-  }, [isTyping, voice, playSound]);
+  }, [isTyping, isListening, voice, playSound]);
 
   // Submit user's typed paragraph (no AI yet); in auto mode, immediately ask AI to take its turn.
   const handleSend = useCallback(async () => {
@@ -954,9 +979,6 @@ export default function Story() {
     );
   }
 
-  const isSpeaking = voice.state === "speaking";
-  const isListening = voice.state === "listening";
-
   return (
     <div
       className={cn(
@@ -971,7 +993,7 @@ export default function Story() {
       {/* Header */}
       <header
         className={cn(
-          "py-6 px-6 md:px-8 border-b border-border/40 sticky top-0 backdrop-blur-sm z-10 flex items-center justify-between transition-colors duration-700",
+          "py-3 sm:py-5 px-3 sm:px-6 md:px-8 border-b border-border/40 sticky top-0 backdrop-blur-sm z-10 flex items-center justify-between gap-2 transition-colors duration-700",
           isNoResponse
             ? "bg-amber-950/10 dark:bg-amber-900/20"
             : isListening
@@ -979,21 +1001,24 @@ export default function Story() {
             : "bg-background/95"
         )}
       >
-        <div className="flex items-center gap-4 overflow-hidden">
-          <Link href="/">
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <Link href="/" className="shrink-0">
             <Button
               variant="ghost"
-              size="icon"
-              className="shrink-0 text-muted-foreground hover:text-foreground"
+              size="sm"
+              className="shrink-0 text-muted-foreground hover:text-foreground gap-1.5 px-2"
+              aria-label="Back to home"
+              title="Back to home"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <Home className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs font-sans">Home</span>
             </Button>
           </Link>
-          <h1 className="text-2xl font-serif font-medium text-foreground truncate">
+          <h1 className="text-lg sm:text-2xl font-serif font-medium text-foreground truncate min-w-0">
             {conversation.title}
           </h1>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 overflow-x-auto [&::-webkit-scrollbar]:hidden shrink-0 max-w-[58vw] sm:max-w-none">
           {isListening && !isNoResponse && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/15 border border-blue-400/30">
               <Mic className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
@@ -1114,15 +1139,15 @@ export default function Story() {
             aria-pressed={settings.gameMode === "manual"}
             title={
               settings.gameMode === "manual"
-                ? "Manual AI turn: ON (press spark to reply)"
-                : "Manual AI turn: OFF (AI replies automatically)"
+                ? "AI turn: manual (tap spark to reply)"
+                : "AI turn: auto (AI replies automatically)"
             }
             data-testid="button-toggle-game-mode"
           >
             {settings.gameMode === "manual" ? (
-              <MicOff className="w-5 h-5" />
+              <ZapOff className="w-5 h-5" />
             ) : (
-              <Mic className="w-5 h-5" />
+              <Zap className="w-5 h-5" />
             )}
           </Button>
 
@@ -1439,7 +1464,7 @@ export default function Story() {
                       {regeneratingMsgId === msg.id ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />
                       ) : (
-                        <Sparkles className="w-5 h-5" />
+                        <Wand2 className="w-5 h-5" />
                       )}
                     </button>
                     <button
@@ -1475,7 +1500,7 @@ export default function Story() {
       </div>
 
       {/* Bottom bar */}
-      <div className="p-4 md:p-6 border-t border-border/40 bg-card rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      <div className="p-3 sm:p-4 md:p-6 border-t border-border/40 bg-card rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
         {settings.blindMode ? (
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-3 py-2">
@@ -1502,6 +1527,9 @@ export default function Story() {
             {draft && (
               <div className="px-4 py-3 rounded-lg bg-background/70 border border-border/40 font-serif text-base leading-relaxed text-primary/80">
                 {draft}
+                {isListening && (
+                  <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-blue-400/70 animate-pulse rounded-sm" />
+                )}
               </div>
             )}
           </div>
@@ -1514,24 +1542,44 @@ export default function Story() {
               placeholder={
                 isTyping
                   ? "Your co-author is writing…"
+                  : isListening
+                  ? "Listening… speak now"
                   : "Write your next paragraph… (Cmd+Enter to send)"
               }
               disabled={isTyping}
-              className="min-h-[120px] resize-none pr-24 font-serif text-lg leading-relaxed bg-background/50 border-border/50 focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
+              className="min-h-[80px] sm:min-h-[120px] resize-none pr-24 font-serif text-base sm:text-lg leading-relaxed bg-background/50 border-border/50 focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
             />
-            <div className="absolute bottom-4 right-4 flex gap-2">
+            {/* Live interim voice transcription indicator */}
+            {isListening && interimTranscript && (
+              <div className="absolute top-2 left-3 right-24 pointer-events-none">
+                <span className="text-[10px] font-sans text-blue-400/80 uppercase tracking-wider">
+                  Listening
+                  <span className="inline-block w-1 h-3 ml-1 align-middle bg-blue-400/60 animate-pulse rounded-sm" />
+                </span>
+              </div>
+            )}
+            {isListening && !interimTranscript && (
+              <div className="absolute top-2 left-3 pointer-events-none">
+                <span className="text-[10px] font-sans text-blue-400/70 uppercase tracking-wider flex items-center gap-1">
+                  <Mic className="w-2.5 h-2.5" />
+                  Listening…
+                </span>
+              </div>
+            )}
+            <div className="absolute bottom-3 right-3 flex gap-1.5">
               <Button
                 size="icon"
                 variant="outline"
                 onClick={handleVoiceSend}
-                disabled={isTyping || isListening}
+                disabled={isTyping}
                 className={cn(
-                  "h-10 w-10 rounded-full transition-all",
+                  "h-9 w-9 sm:h-10 sm:w-10 rounded-full transition-all",
                   isListening
                     ? "bg-blue-500/20 border-blue-400/50 text-blue-400 animate-pulse"
                     : "text-muted-foreground hover:text-foreground"
                 )}
-                aria-label="Dictate"
+                aria-label={isListening ? "Stop dictation" : "Dictate"}
+                title={isListening ? "Tap to stop recording" : "Tap to dictate"}
               >
                 <Mic className="w-4 h-4" />
               </Button>
@@ -1539,7 +1587,7 @@ export default function Story() {
                 size="icon"
                 onClick={handleSend}
                 disabled={!draft.trim() || isTyping}
-                className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm transition-all"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm transition-all"
                 aria-label="Send your paragraph"
               >
                 <Send className="w-4 h-4 ml-0.5" />
@@ -1549,12 +1597,12 @@ export default function Story() {
                   onClick={handleRequestAi}
                   disabled={isTyping}
                   data-testid="button-ai-turn"
-                  className="h-10 px-4 rounded-full bg-amber-500 hover:bg-amber-500/90 text-amber-950 font-sans font-medium shadow-sm transition-all gap-2"
+                  className="h-9 sm:h-10 px-2 sm:px-4 rounded-full bg-amber-500 hover:bg-amber-500/90 text-amber-950 font-sans font-medium shadow-sm transition-all gap-1.5"
                   aria-label="Request AI turn"
                   title="Ask the AI to write the next paragraph"
                 >
                   <Sparkles className="w-4 h-4" />
-                  AI turn
+                  <span className="hidden sm:inline">AI turn</span>
                 </Button>
               )}
             </div>
