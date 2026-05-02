@@ -1,11 +1,30 @@
 {
-  "_comment": "Central log configuration. Restart the API server to apply changes.",
+  "_comment": "Central log configuration. Restart services to apply changes to level/path/enabled. Body and message settings hot-reload without restart.",
 
   "level": "debug",
 
   "showFullPayload": false,
 
   "redactSecrets": true,
+
+  "logs": {
+    "server": {
+      "enabled": true,
+      "path": "logs/server.log",
+      "level": "debug",
+      "console": true
+    },
+    "openrouter": {
+      "enabled": true,
+      "path": "logs/openrouter.log",
+      "level": "debug",
+      "console": true
+    },
+    "client": {
+      "enabled": true,
+      "path": "logs/client.log"
+    }
+  },
 
   "body": {
     "maxStringLength": 2000,

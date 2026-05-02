@@ -5,24 +5,52 @@ import path from "path";
 import fs from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+interface ClientLogFileConfig {
+  enabled: boolean;
+  path: string;
+}
+
+function loadClientLogConfig(): ClientLogFileConfig {
+  const defaults: ClientLogFileConfig = { enabled: true, path: "logs/client.log" };
+  const candidates = [
+    path.resolve(import.meta.dirname, "../../log.config.json"),
+    path.resolve(import.meta.dirname, "log.config.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = fs.readFileSync(candidate, "utf-8");
+      const parsed = JSON.parse(raw) as { logs?: { client?: Partial<ClientLogFileConfig> } };
+      return { ...defaults, ...(parsed.logs?.client ?? {}) };
+    } catch {
+      // try next
+    }
+  }
+  return defaults;
+}
+
 /**
  * Capture browser console output and uncaught errors to a server-side
  * log file so the developer agent (which can't see the user's browser
  * devtools) can inspect what the app actually emitted at runtime.
+ *
+ * Controlled by log.config.json → logs.client:
+ *   enabled  — set false to stop capturing entirely
+ *   path     — output file (relative to story-app dir, or absolute)
  *
  * The plugin does two things:
  *   1. Injects a tiny script at the top of `<head>` that wraps
  *      `console.{log,info,warn,error,debug}`, plus `window.onerror` and
  *      `unhandledrejection`, into a batched POST to `/__client-log`.
  *   2. Adds a dev-server middleware on `/__client-log` that appends
- *      newline-delimited JSON entries to `logs/client.log`.
+ *      newline-delimited JSON entries to the configured log file.
  *
  * Dev-only by design — the middleware is only registered via
  * `configureServer`, so production builds carry no extra surface.
  */
 function clientLogPlugin(): Plugin {
-  const logDir = path.resolve(import.meta.dirname, "logs");
-  const logFile = path.join(logDir, "client.log");
+  const clientCfg = loadClientLogConfig();
+  const logFile = path.resolve(import.meta.dirname, clientCfg.path);
+  const logDir = path.dirname(logFile);
 
   const ensureLogFile = () => {
     try {
@@ -31,6 +59,10 @@ function clientLogPlugin(): Plugin {
       // best-effort — if the directory can't be created we silently drop logs
     }
   };
+
+  if (!clientCfg.enabled) {
+    return { name: "story-app-client-log", apply: "serve" as const };
+  }
 
   return {
     name: "story-app-client-log",

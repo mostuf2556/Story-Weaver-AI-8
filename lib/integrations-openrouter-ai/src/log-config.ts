@@ -2,14 +2,47 @@ import { readFileSync } from "fs";
 import { join, resolve } from "path";
 
 /**
+ * Per-file log settings shared by server.log and openrouter.log.
+ */
+export interface LogFileConfig {
+  /** Write to this log file. Set false to disable file output entirely. */
+  enabled: boolean;
+  /**
+   * File path for log output.
+   * Relative paths are resolved from the process working directory.
+   */
+  path: string;
+  /**
+   * Log level for this file. Overrides the top-level `level` when set.
+   * One of: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
+   */
+  level: string;
+  /** Also print to stdout (pino-pretty in dev, JSON in prod). */
+  console: boolean;
+}
+
+/**
+ * Settings for the browser-side client.log captured by the Vite plugin.
+ */
+export interface ClientLogFileConfig {
+  /** Capture browser console output to a log file. Set false to disable. */
+  enabled: boolean;
+  /**
+   * File path for captured browser logs.
+   * Relative paths are resolved from the story-app directory.
+   */
+  path: string;
+}
+
+/**
  * Central log configuration shape.
  *
  * Edit `log.config.json` at the workspace root to change behaviour.
- * Restart the API server after saving.
+ * Restart services after saving (body/message settings hot-reload without restart).
  */
 export interface LogConfig {
   /**
-   * Pino log level applied to all loggers.
+   * Default Pino log level applied to all loggers unless overridden per-file.
    * One of: "trace" | "debug" | "info" | "warn" | "error" | "fatal"
    */
   level: string;
@@ -27,6 +60,16 @@ export interface LogConfig {
    * bodies are replaced with "[redacted]" before logging.
    */
   redactSecrets: boolean;
+
+  /** Per-file log settings for each of the three log files. */
+  logs: {
+    /** Express / Pino HTTP request logs → server.log */
+    server: LogFileConfig;
+    /** OpenRouter client request/response logs → openrouter.log */
+    openrouter: LogFileConfig;
+    /** Browser console output captured by the Vite plugin → client.log */
+    client: ClientLogFileConfig;
+  };
 
   /** Controls HTTP request body sanitization. Ignored when showFullPayload is true. */
   body: {
@@ -53,6 +96,24 @@ export const DEFAULT_LOG_CONFIG: LogConfig = {
   level: "debug",
   showFullPayload: false,
   redactSecrets: true,
+  logs: {
+    server: {
+      enabled: true,
+      path: "logs/server.log",
+      level: "debug",
+      console: true,
+    },
+    openrouter: {
+      enabled: true,
+      path: "logs/openrouter.log",
+      level: "debug",
+      console: true,
+    },
+    client: {
+      enabled: true,
+      path: "logs/client.log",
+    },
+  },
   body: {
     maxStringLength: 2000,
     maxArrayLength: 20,
@@ -88,6 +149,11 @@ export function loadLogConfig(): LogConfig {
       return {
         ...DEFAULT_LOG_CONFIG,
         ...parsed,
+        logs: {
+          server: { ...DEFAULT_LOG_CONFIG.logs.server, ...(parsed.logs?.server ?? {}) },
+          openrouter: { ...DEFAULT_LOG_CONFIG.logs.openrouter, ...(parsed.logs?.openrouter ?? {}) },
+          client: { ...DEFAULT_LOG_CONFIG.logs.client, ...(parsed.logs?.client ?? {}) },
+        },
         body: { ...DEFAULT_LOG_CONFIG.body, ...(parsed.body ?? {}) },
         openrouterMessages: {
           ...DEFAULT_LOG_CONFIG.openrouterMessages,
@@ -103,6 +169,6 @@ export function loadLogConfig(): LogConfig {
 
 /**
  * Load log config once at module initialisation — used for values that
- * configure logger instances (level, redact) which cannot change at runtime.
+ * configure logger instances (level, path, enabled) which cannot change at runtime.
  */
 export const staticLogConfig: LogConfig = loadLogConfig();
