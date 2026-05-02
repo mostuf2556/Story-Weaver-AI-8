@@ -207,6 +207,9 @@ export const TriggerOpenrouterAiTurnBody = zod.object({
     .describe(
       "BCP-47 language code instructing the AI which language to respond in (e.g. en-US, he-IL).",
     ),
+  maxRetries: zod.number().nullish().describe(
+    "How many times to retry when the AI returns an empty response. Overrides the server-side AI_MAX_ATTEMPTS env var when provided.",
+  ),
 });
 
 /**

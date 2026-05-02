@@ -71,6 +71,13 @@ export interface StorySettings {
    */
   ttsVoices: Record<string, string>;
   /**
+   * How many times the API should retry when the AI returns an empty
+   * response before giving up with a 502. Range 1–10, default 3.
+   * Sent with every ai-turn request so the user can tune it without
+   * needing server-side config changes.
+   */
+  aiMaxRetries: number;
+  /**
    * Schema version for the persisted settings blob. Bumped whenever a
    * default changes in a way that should overwrite a previously saved
    * value (e.g. when a default was wrong and the user almost certainly
@@ -110,6 +117,7 @@ const DEFAULTS: StorySettings = {
   ttsRates: {},
   ttsRateDefault: 0.95,
   ttsVoices: {},
+  aiMaxRetries: 3,
   settingsVersion: SETTINGS_VERSION,
 };
 

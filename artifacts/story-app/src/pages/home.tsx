@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useTheme } from "@/hooks/use-theme";
 import {
   useListOpenrouterConversations,
   useCreateOpenrouterConversation,
@@ -37,6 +38,8 @@ const CARD_COLORS = [
 const CARD_EMOJIS = ["📖", "✨", "🌙", "🐉", "🌻", "🏰", "🦋", "🌊", "⭐", "🎪"];
 
 export default function Home() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const { settings, updateSettings } = useSettings();
   const { data: conversations, isLoading } = useListOpenrouterConversations();
   const createConversation = useCreateOpenrouterConversation();
@@ -132,7 +135,9 @@ export default function Home() {
             style={{
               fontFamily: "'Caveat', cursive",
               color: "#E65C40",
-              textShadow: "2px 2px 0px #FFF8E7, 4px 4px 0px #FFB84D",
+              textShadow: isDark
+                ? "2px 2px 0px transparent, 4px 4px 0px #FFB84D80"
+                : "2px 2px 0px #FFF8E7, 4px 4px 0px #FFB84D",
             }}
           >
             Story Together
@@ -148,8 +153,8 @@ export default function Home() {
         </div>
 
         <p
-          className="text-xl md:text-2xl font-semibold mb-10 opacity-90 mt-2"
-          style={{ fontFamily: "'Nunito', sans-serif", color: "#92400e" }}
+          className="text-xl md:text-2xl font-semibold mb-10 opacity-90 mt-2 text-muted-foreground"
+          style={{ fontFamily: "'Nunito', sans-serif" }}
         >
           Every story starts with you! 📖
         </p>
@@ -269,7 +274,7 @@ export default function Home() {
               <div
                 key={i}
                 className="animate-pulse rounded-xl border-4 border-dashed p-6"
-                style={{ borderColor: "#FFB84D50", backgroundColor: "#FFFCF5" }}
+                style={{ borderColor: "#FFB84D50", backgroundColor: "hsl(var(--card))" }}
               >
                 <div className="h-10 bg-muted rounded w-3/4 mb-4 mx-auto" />
                 <div className="h-4 bg-muted rounded w-1/2 mx-auto" />
@@ -286,8 +291,8 @@ export default function Home() {
               Your library is empty!
             </p>
             <p
-              className="font-semibold opacity-80 max-w-xs mx-auto"
-              style={{ fontFamily: "'Nunito', sans-serif", color: "#92400e" }}
+              className="font-semibold opacity-80 max-w-xs mx-auto text-muted-foreground"
+              style={{ fontFamily: "'Nunito', sans-serif" }}
             >
               Tap the button above to begin your first adventure.
             </p>
@@ -303,7 +308,7 @@ export default function Home() {
                     className="group relative flex flex-col p-5 rounded-xl border-4 border-dashed cursor-pointer transition-transform duration-200 hover:scale-[1.03] hover:z-10"
                     style={{
                       borderColor: palette.border,
-                      backgroundColor: "#FFFCF5",
+                      backgroundColor: "hsl(var(--card))",
                       boxShadow: `5px 5px 0px ${palette.shadow}`,
                     }}
                   >
@@ -331,7 +336,7 @@ export default function Home() {
                       className="text-2xl font-bold text-center mb-3 flex-grow leading-tight"
                       style={{
                         fontFamily: "'Caveat', cursive",
-                        color: "#5C3A1E",
+                        color: "hsl(var(--card-foreground))",
                       }}
                     >
                       {conv.title}

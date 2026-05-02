@@ -449,7 +449,7 @@ router.post(
     }
 
     const conversationId = params.data.id;
-    const { model, maxTokens, temperature, apiKey, apiUrl, language } =
+    const { model, maxTokens, temperature, apiKey, apiUrl, language, maxRetries } =
       bodyParsed.data;
 
     const [conv] = await db
@@ -505,7 +505,7 @@ router.post(
 
     const maxAttempts = Math.max(
       1,
-      Number(process.env.AI_MAX_ATTEMPTS ?? "3"),
+      maxRetries ?? Number(process.env.AI_MAX_ATTEMPTS ?? "3"),
     );
     const attempts: Array<{
       attempt: number;

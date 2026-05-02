@@ -58,7 +58,7 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
       </DialogTrigger>
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="font-serif text-xl text-primary">
+          <DialogTitle>
             Voice Settings
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
@@ -356,13 +356,14 @@ export function SttSettingsDialog({ settings, onSave }: Props) {
           <Button
             variant="outline"
             onClick={() => setOpen(false)}
-            className="font-sans"
+            className="rounded-full font-sans border-2"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 font-sans"
+            className="rounded-full font-bold font-sans bg-primary text-primary-foreground active:translate-y-[2px] transition-all duration-100 hover:-translate-y-0.5"
+            style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
             data-testid="button-save-stt-settings"
           >
             Save Settings

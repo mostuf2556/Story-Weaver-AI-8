@@ -65,6 +65,7 @@ function buildOptionsBody(settings?: StorySettings): Record<string, unknown> {
   if (settings.apiKey) body.apiKey = settings.apiKey;
   if (settings.apiUrl) body.apiUrl = settings.apiUrl;
   if (settings.stt?.aiLanguage) body.language = settings.stt.aiLanguage;
+  body.maxRetries = settings.aiMaxRetries ?? 3;
   return body;
 }
 

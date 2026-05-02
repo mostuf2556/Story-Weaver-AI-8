@@ -51,7 +51,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
       </DialogTrigger>
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="font-serif text-xl text-primary">
+          <DialogTitle>
             AI Settings
           </DialogTitle>
           <DialogDescription className="text-foreground/60">
@@ -181,19 +181,45 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               Leave blank to use the built-in Replit-managed key.
             </p>
           </div>
+
+          <div className="space-y-2 pt-2 border-t border-border/40">
+            <div className="flex justify-between items-center">
+              <Label htmlFor="aiMaxRetries">Retry empty responses</Label>
+              <span className="text-sm tabular-nums text-muted-foreground">
+                {local.aiMaxRetries} {local.aiMaxRetries === 1 ? "time" : "times"}
+              </span>
+            </div>
+            <Slider
+              id="aiMaxRetries"
+              data-testid="slider-ai-max-retries"
+              min={1}
+              max={10}
+              step={1}
+              value={[local.aiMaxRetries]}
+              onValueChange={([v]) =>
+                setLocal((p) => ({ ...p, aiMaxRetries: v }))
+              }
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground">
+              If the AI returns an empty reply, the server retries this many
+              times before showing an error.
+            </p>
+          </div>
         </div>
 
         <DialogFooter>
           <Button
             variant="outline"
             onClick={() => setOpen(false)}
-            className="font-sans"
+            className="rounded-full font-sans border-2"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 font-sans"
+            className="rounded-full font-bold font-sans bg-primary text-primary-foreground active:translate-y-[2px] transition-all duration-100 hover:-translate-y-0.5"
+            style={{ boxShadow: "0 4px 0 0 var(--primary-shadow)" }}
             data-testid="button-save-openrouter-settings"
           >
             Save Settings

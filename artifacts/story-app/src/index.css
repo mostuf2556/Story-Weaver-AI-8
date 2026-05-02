@@ -125,6 +125,8 @@
   --app-font-serif: 'Lora', Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: 0.5rem;
+  /* Pressed shadow for 3D storybook buttons */
+  --primary-shadow: #C54A32;
 
   /* Polka dot color for background pattern */
   --polka-dot: hsl(38 85% 88%);
@@ -208,6 +210,8 @@
 
   /* Polka dot color for dark mode — barely visible above background */
   --polka-dot: hsl(22 20% 18%);
+  /* Pressed shadow for 3D storybook buttons in dark mode */
+  --primary-shadow: #8a3222;
 
   --shadow-2xs: 0px 2px 0px 0px rgba(0,0,0,0.22);
   --shadow-xs: 0px 2px 0px 0px rgba(0,0,0,0.22);
@@ -236,6 +240,10 @@
 }
 
 @layer utilities {
+  .font-caveat {
+    font-family: 'Caveat', cursive;
+  }
+
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }
