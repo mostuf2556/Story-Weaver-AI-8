@@ -1007,12 +1007,12 @@ export default function Story() {
 
   if (isLoadingConv || isLoadingMsgs) {
     return (
-      <div className="max-w-3xl mx-auto py-12 px-6 h-screen flex flex-col">
-        <div className="h-8 bg-muted animate-pulse rounded w-1/3 mb-12"></div>
-        <div className="space-y-6 flex-1">
-          <div className="h-24 bg-muted animate-pulse rounded w-full"></div>
-          <div className="h-32 bg-muted animate-pulse rounded w-5/6"></div>
-          <div className="h-20 bg-muted animate-pulse rounded w-full"></div>
+      <div className="max-w-3xl mx-auto py-12 px-6 h-screen flex flex-col items-center justify-center gap-6">
+        <div className="text-5xl animate-pulse">📖</div>
+        <div className="space-y-4 w-full max-w-md">
+          <div className="h-8 bg-muted animate-pulse rounded-xl w-2/3 mx-auto"></div>
+          <div className="h-24 bg-muted animate-pulse rounded-xl w-full"></div>
+          <div className="h-20 bg-muted animate-pulse rounded-xl w-5/6 mx-auto"></div>
         </div>
       </div>
     );
@@ -1021,11 +1021,27 @@ export default function Story() {
   if (!conversation) {
     return (
       <div className="max-w-3xl mx-auto py-20 px-6 text-center">
-        <h2 className="text-2xl font-serif mb-4">Story not found</h2>
+        <div className="text-6xl mb-5">🔍</div>
+        <h2
+          className="text-4xl font-bold mb-3"
+          style={{ fontFamily: "'Caveat', cursive", color: "#E65C40" }}
+        >
+          Story not found
+        </h2>
+        <p className="text-muted-foreground mb-6 font-sans">
+          This chapter seems to have wandered off…
+        </p>
         <Link href="/">
-          <Button variant="outline" className="font-sans">
-            Return to Library
-          </Button>
+          <button
+            className="relative inline-flex items-center justify-center px-6 py-3 text-lg font-bold text-white rounded-full transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0.5"
+            style={{
+              fontFamily: "'Caveat', cursive",
+              backgroundColor: "#E65C40",
+              boxShadow: "0 5px 0 0 #C54A32",
+            }}
+          >
+            ← Return to Library
+          </button>
         </Link>
       </div>
     );
@@ -1055,18 +1071,24 @@ export default function Story() {
       >
         <div className="flex items-center gap-2 min-w-0 shrink">
           <Link href="/" className="shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0 text-muted-foreground hover:text-foreground gap-1.5 px-2"
+            <button
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold text-white transition-transform duration-150 hover:-translate-y-0.5 active:translate-y-0.5"
+              style={{
+                fontFamily: "'Nunito', sans-serif",
+                backgroundColor: "#E65C40",
+                boxShadow: "0 4px 0 0 #C54A32",
+              }}
               aria-label="Back to home"
               title="Back to home"
             >
-              <Home className="w-4 h-4" />
-              <span className="hidden sm:inline text-xs font-sans">Home</span>
-            </Button>
+              <Home className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Home</span>
+            </button>
           </Link>
-          <h1 className="text-lg sm:text-2xl font-serif font-medium text-foreground truncate min-w-0">
+          <h1
+            className="text-xl sm:text-2xl font-bold truncate min-w-0"
+            style={{ fontFamily: "'Caveat', cursive", color: "hsl(var(--primary))" }}
+          >
             {conversation.title}
           </h1>
         </div>
@@ -1335,10 +1357,21 @@ export default function Story() {
         ref={scrollContainerRef}
       >
         {messages?.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground italic">
-            {settings.blindMode
-              ? "Blind mode is on. Speak your opening paragraph."
-              : "The first page is blank. Write the opening paragraph below…"}
+          <div className="text-center py-20 flex flex-col items-center gap-3">
+            <div className="text-5xl">✏️</div>
+            <p
+              className="text-2xl font-bold"
+              style={{ fontFamily: "'Caveat', cursive", color: "#E65C40" }}
+            >
+              {settings.blindMode
+                ? "Blind mode is on — speak your opening paragraph!"
+                : "The first page is blank…"}
+            </p>
+            {!settings.blindMode && (
+              <p className="text-muted-foreground font-sans text-sm">
+                Write your opening paragraph below to begin the adventure!
+              </p>
+            )}
           </div>
         )}
 
@@ -1348,15 +1381,15 @@ export default function Story() {
             <div
               key={msg.id}
               className={cn(
-                "group relative animate-in fade-in slide-in-from-bottom-2 duration-500",
+                "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 pl-4 border-l-4 rounded-r-sm transition-colors",
                 msg.role === "assistant"
-                  ? "text-foreground"
-                  : "text-primary/90"
+                  ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
+                  : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
               )}
             >
               <div
                 className={cn(
-                  "absolute -left-8 top-1.5 opacity-0 group-hover:opacity-40 transition-opacity",
+                  "absolute -left-8 top-1.5 opacity-0 group-hover:opacity-50 transition-opacity",
                   msg.role === "assistant"
                     ? "text-secondary-foreground"
                     : "text-primary"
@@ -1553,14 +1586,14 @@ export default function Story() {
 
         {/* AI is composing (non-streaming) */}
         {isTyping && (
-          <div className="relative text-foreground animate-in fade-in duration-300">
-            <div className="absolute -left-8 top-1.5 opacity-40 text-secondary-foreground">
+          <div className="relative animate-in fade-in duration-300 pl-4 border-l-4 border-[#82C3DF] rounded-r-sm">
+            <div className="absolute -left-8 top-1.5 opacity-50" style={{ color: "#82C3DF" }}>
               <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
-            <div className="italic text-muted-foreground">
-              Your co-author is writing
+            <div className="italic text-muted-foreground font-serif">
+              ✨ Your co-author is writing
               {streamedContent ? `… ${streamedContent}` : "…"}
-              <span className="inline-block w-1.5 h-5 ml-1 align-middle bg-primary/50 animate-pulse"></span>
+              <span className="inline-block w-1.5 h-5 ml-1 align-middle bg-[#82C3DF]/60 animate-pulse rounded-sm"></span>
             </div>
           </div>
         )}
@@ -1569,7 +1602,7 @@ export default function Story() {
       </div>
 
       {/* Bottom bar */}
-      <div className="p-3 sm:p-4 md:p-6 border-t border-border/40 bg-card rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      <div className="p-3 sm:p-4 md:p-6 border-t-4 border-dashed border-[#FFB84D]/40 bg-card rounded-t-2xl shadow-[0_-6px_24px_rgba(92,58,30,0.06)]">
         {settings.blindMode ? (
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-3 py-2">
@@ -1616,7 +1649,7 @@ export default function Story() {
                   : "Write your next paragraph… (Cmd+Enter to send)"
               }
               disabled={isTyping}
-              className="min-h-[80px] sm:min-h-[120px] resize-none pr-24 font-serif text-base sm:text-lg leading-relaxed bg-background/50 border-border/50 focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
+              className="min-h-[80px] sm:min-h-[120px] resize-none pr-24 font-serif text-base sm:text-lg leading-relaxed bg-background border-2 border-dashed border-[#FFB84D]/50 rounded-xl focus-visible:ring-primary/50 placeholder:italic placeholder:font-serif"
             />
             {/* Live interim voice transcription indicator */}
             {isListening && interimTranscript && (
@@ -1656,7 +1689,8 @@ export default function Story() {
                 size="icon"
                 onClick={handleSend}
                 disabled={!draft.trim() || isTyping}
-                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm transition-all"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full text-white transition-transform duration-150 hover:-translate-y-0.5 active:translate-y-0.5"
+                style={{ backgroundColor: "#E65C40", boxShadow: "0 4px 0 0 #C54A32" }}
                 aria-label="Send your paragraph"
               >
                 <Send className="w-4 h-4 ml-0.5" />
@@ -1666,7 +1700,8 @@ export default function Story() {
                   onClick={handleRequestAi}
                   disabled={isTyping}
                   data-testid="button-ai-turn"
-                  className="h-9 sm:h-10 px-2 sm:px-4 rounded-full bg-amber-500 hover:bg-amber-500/90 text-amber-950 font-sans font-medium shadow-sm transition-all gap-1.5"
+                  className="h-9 sm:h-10 px-2 sm:px-4 rounded-full text-amber-950 font-bold transition-transform duration-150 hover:-translate-y-0.5 active:translate-y-0.5 gap-1.5"
+                  style={{ fontFamily: "'Nunito', sans-serif", backgroundColor: "#FFB84D", boxShadow: "0 4px 0 0 #D4962B" }}
                   aria-label="Request AI turn"
                   title="Ask the AI to write the next paragraph"
                 >
