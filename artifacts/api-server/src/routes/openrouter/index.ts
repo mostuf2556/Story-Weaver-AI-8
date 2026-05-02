@@ -706,7 +706,7 @@ router.post(
     }
 
     const messageId = params.data.messageId;
-    const { model, maxTokens, temperature, apiKey, apiUrl, language } =
+    const { model, maxTokens, temperature, apiKey, apiUrl, language, maxRetries } =
       bodyParsed.data;
 
     const [target] = await db
@@ -767,13 +767,22 @@ router.post(
 
     const maxAttempts = Math.max(
       1,
-      Number(process.env.AI_MAX_ATTEMPTS ?? "3"),
+      maxRetries ?? Number(process.env.AI_MAX_ATTEMPTS ?? "3"),
     );
+    const attempts: Array<{
+      attempt: number;
+      durationMs: number;
+      success: boolean;
+      error?: { status?: number; message: string };
+      finishReason?: string | null;
+      empty?: boolean;
+    }> = [];
     let lastError: { status: number; message: string } | null = null;
     let successContent = "";
     let successCompletion: OpenAI.Chat.Completions.ChatCompletion | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const start = Date.now();
       try {
         logOpenRouterRequest(`regenerate (attempt ${attempt}/${maxAttempts})`, {
           ...requestPayload,
@@ -784,10 +793,25 @@ router.post(
           stream: false,
         });
         const content = completion.choices[0]?.message?.content?.trim() ?? "";
+        const finishReason = completion.choices[0]?.finish_reason ?? null;
         if (!content) {
+          attempts.push({
+            attempt,
+            durationMs: Date.now() - start,
+            success: false,
+            empty: true,
+            finishReason,
+            error: { message: "AI returned an empty response" },
+          });
           lastError = { status: 502, message: "AI returned an empty response" };
           continue;
         }
+        attempts.push({
+          attempt,
+          durationMs: Date.now() - start,
+          success: true,
+          finishReason,
+        });
         successContent = content;
         successCompletion = completion;
         break;
@@ -798,6 +822,12 @@ router.post(
             : 500;
         const message =
           err instanceof Error ? err.message : "AI completion failed";
+        attempts.push({
+          attempt,
+          durationMs: Date.now() - start,
+          success: false,
+          error: { status, message },
+        });
         lastError = { status, message };
         logger.warn(
           { err, status, attempt, maxAttempts },
@@ -809,7 +839,7 @@ router.post(
     if (!successContent) {
       const finalStatus = lastError?.status ?? 500;
       const finalMessage = lastError?.message ?? "AI completion failed";
-      res.status(finalStatus).json({ error: finalMessage });
+      res.status(finalStatus).json({ error: finalMessage, attempts });
       return;
     }
 
@@ -831,6 +861,7 @@ router.post(
       actualModel,
       request: requestPayload,
       response: successCompletion,
+      attempts,
     });
   },
 );

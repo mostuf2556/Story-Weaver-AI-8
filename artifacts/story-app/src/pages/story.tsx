@@ -898,6 +898,7 @@ export default function Story() {
       model: settings.model || "openrouter/free",
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
+      maxRetries: settings.aiMaxRetries ?? 3,
       ...(settings.apiKey ? { apiKey: settings.apiKey } : {}),
       ...(settings.apiUrl ? { apiUrl: settings.apiUrl } : {}),
       ...(settings.stt.aiLanguage ? { language: settings.stt.aiLanguage } : {}),

@@ -142,6 +142,15 @@ export const RegenerateOpenrouterMessageBody = zod.object({
     .describe(
       "BCP-47 language code instructing the AI which language to respond in.",
     ),
+  maxRetries: zod
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .nullish()
+    .describe(
+      "Maximum number of attempts when the AI returns an empty response. Overrides AI_MAX_ATTEMPTS env var.",
+    ),
 });
 
 export const RegenerateOpenrouterMessageResponse = zod.object({
