@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ListOrdered, ArrowUp, ArrowDown, X, Plus, ChevronsUpDown, Check } from "lucide-react";
+import { ListOrdered, ArrowUp, ArrowDown, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,26 +11,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
-import {
   PLAY_ORIGINAL,
   syncPlayOrderForView,
   type StorySettings,
 } from "@/hooks/use-settings";
 import { TRANSLATE_LANGUAGES } from "@/config/translate-languages";
-import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n-context";
 
 interface Props {
@@ -42,9 +27,6 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [order, setOrder] = useState<string[]>(settings.ttsPlayOrder);
-  /* Local copy of viewLanguages so we can add new ones from the picker */
-  const [viewLangs, setViewLangs] = useState<string[]>(settings.viewLanguages);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
@@ -54,9 +36,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
 
   useEffect(() => {
     if (open) {
-      const synced = syncPlayOrderForView(settings.ttsPlayOrder, settings.viewLanguages);
-      setOrder(synced);
-      setViewLangs(settings.viewLanguages);
+      setOrder(syncPlayOrderForView(settings.ttsPlayOrder, settings.viewLanguages));
     }
   }, [open, settings.ttsPlayOrder, settings.viewLanguages]);
 
@@ -75,29 +55,21 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
     });
   };
 
+  /* Remove by index so duplicates are handled correctly */
   const remove = (idx: number) => {
     setOrder((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  /** Add item to order (duplicates allowed). If it's a language not yet in
-   *  viewLangs, also add it there so the translation is displayed on screen. */
-  const addItem = (item: string) => {
+  /* Add always appends — same item can appear multiple times */
+  const add = (item: string) => {
     setOrder((prev) => [...prev, item]);
-    if (item !== PLAY_ORIGINAL && !viewLangs.includes(item)) {
-      setViewLangs((prev) => [...prev, item]);
-    }
-    setPickerOpen(false);
   };
 
+  /* All available items — original + every selected view language */
+  const addable = [PLAY_ORIGINAL, ...settings.viewLanguages];
+
   const handleSave = () => {
-    onSave({
-      ttsPlayOrder: order,
-      viewLanguages: viewLangs,
-      /* keep play order in sync with any newly added view languages */
-      ...(viewLangs !== settings.viewLanguages
-        ? { ttsPlayOrder: syncPlayOrderForView(order, viewLangs) }
-        : {}),
-    });
+    onSave({ ttsPlayOrder: order });
     setOpen(false);
   };
 
@@ -125,7 +97,6 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* ── Current order ── */}
           {order.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/60 bg-background px-4 py-6 text-center text-sm text-muted-foreground">
               {t("playOrder.empty")}
@@ -153,31 +124,23 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
+                      type="button" variant="ghost" size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                      onClick={() => move(idx, -1)}
-                      disabled={idx === 0}
+                      onClick={() => move(idx, -1)} disabled={idx === 0}
                       aria-label={t("playOrder.moveUp", renderLabel(item))}
                     >
                       <ArrowUp className="w-4 h-4" />
                     </Button>
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
+                      type="button" variant="ghost" size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                      onClick={() => move(idx, 1)}
-                      disabled={idx === order.length - 1}
+                      onClick={() => move(idx, 1)} disabled={idx === order.length - 1}
                       aria-label={t("playOrder.moveDown", renderLabel(item))}
                     >
                       <ArrowDown className="w-4 h-4" />
                     </Button>
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
+                      type="button" variant="ghost" size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => remove(idx)}
                       aria-label={t("playOrder.remove", renderLabel(item))}
@@ -190,98 +153,32 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
             </ol>
           )}
 
-          {/* ── Add to order ── */}
-          <div className="space-y-2 pt-2 border-t border-border/40">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {t("playOrder.addToOrder")}
-            </p>
-
-            <div className="flex flex-wrap gap-1.5">
-              {/* Original language quick-add */}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addItem(PLAY_ORIGINAL)}
-                className="h-7 px-2 text-xs gap-1"
-                data-testid={`button-tts-order-add-${PLAY_ORIGINAL}`}
-              >
-                <Plus className="w-3 h-3" />
-                {t("playOrder.original")}
-              </Button>
-
-              {/* Searchable language combobox */}
-              <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-                <PopoverTrigger asChild>
+          {addable.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-border/40">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t("playOrder.addToOrder")}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {addable.map((item) => (
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
+                    key={item}
+                    type="button" variant="outline" size="sm"
+                    onClick={() => add(item)}
                     className="h-7 px-2 text-xs gap-1"
-                    data-testid="button-tts-order-add-language"
+                    data-testid={`button-tts-order-add-${item}`}
                   >
                     <Plus className="w-3 h-3" />
-                    {t("playOrder.addTranslation")}
-                    <ChevronsUpDown className="w-3 h-3 opacity-60" />
+                    {renderLabel(item)}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-72 p-0"
-                  align="start"
-                  /* Keep it on top of the Dialog */
-                  style={{ zIndex: 9999 }}
-                >
-                  <Command>
-                    <CommandInput placeholder={t("playOrder.searchLanguage")} />
-                    <CommandList>
-                      <CommandEmpty>{t("playOrder.noLanguage")}</CommandEmpty>
-                      {/* Already-selected view languages appear first */}
-                      {viewLangs.length > 0 && (
-                        <CommandGroup heading={t("playOrder.currentTranslations")}>
-                          {viewLangs.map((code) => {
-                            const lang = TRANSLATE_LANGUAGES.find((l) => l.code === code);
-                            return (
-                              <CommandItem
-                                key={code}
-                                value={`${lang?.label ?? code} ${lang?.native ?? ""} ${code}`}
-                                onSelect={() => addItem(code)}
-                                data-testid={`tts-order-lang-${code}`}
-                              >
-                                <Check className={cn("w-3 h-3 shrink-0", order.includes(code) ? "opacity-100" : "opacity-0")} />
-                                <span className="flex-1 truncate">{lang?.label ?? code}</span>
-                                <span className="text-xs text-muted-foreground shrink-0">{lang?.native}</span>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      )}
-                      {viewLangs.length > 0 && <CommandSeparator />}
-                      <CommandGroup heading={t("playOrder.allLanguages")}>
-                        {TRANSLATE_LANGUAGES.filter((l) => !viewLangs.includes(l.code)).map((l) => (
-                          <CommandItem
-                            key={l.code}
-                            value={`${l.label} ${l.native} ${l.code}`}
-                            onSelect={() => addItem(l.code)}
-                            data-testid={`tts-order-lang-${l.code}`}
-                          >
-                            <span className="w-3 h-3 shrink-0" />
-                            <span className="flex-1 truncate">{l.label}</span>
-                            <span className="text-xs text-muted-foreground shrink-0">{l.native}</span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground/70 italic">
+                {t("playOrder.duplicatesAllowed")}
+              </p>
             </div>
+          )}
 
-            <p className="text-xs text-muted-foreground/70 italic">
-              {t("playOrder.duplicatesAllowed")}
-            </p>
-          </div>
-
-          {viewLangs.length === 0 && order.every((o) => o === PLAY_ORIGINAL) && (
+          {settings.viewLanguages.length === 0 && (
             <p className="text-xs text-muted-foreground italic">
               {t("playOrder.tip")}
             </p>
@@ -289,11 +186,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            className="rounded-full font-sans border-2"
-          >
+          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full font-sans border-2">
             {t("cancel")}
           </Button>
           <Button

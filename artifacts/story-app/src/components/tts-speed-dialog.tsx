@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Gauge, Trash2 } from "lucide-react";
+import { Gauge, Trash2, ChevronsUpDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,18 +10,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { type StorySettings } from "@/hooks/use-settings";
 import { TRANSLATE_LANGUAGES } from "@/config/translate-languages";
 import { STT_LANGUAGES } from "@/config/stt";
+import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n-context";
 
 interface Props {
@@ -40,6 +48,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
   const [editingLang, setEditingLang] = useState<string>(
     settings.stt.language || "en-US",
   );
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const handleOpen = (v: boolean) => {
     if (v) {
@@ -72,9 +81,8 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
   };
 
   /*
-   * Build a combined label map from both the full translation list and the
-   * STT list (which uses BCP-47 region codes like "en-US" that differ from
-   * the translation codes like "en").
+   * Build a combined label map from both lists.
+   * STT uses region codes like "en-US"; translate uses subtags like "en".
    */
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
@@ -83,28 +91,46 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
     return map;
   }, []);
 
-  /*
-   * Combined, deduplicated language list for the speed selector.
-   * STT_LANGUAGES come first (they're the ones in active use for dictation /
-   * TTS), followed by any additional translate-only languages.
-   */
-  const allLanguages = useMemo(() => {
-    const seen = new Set<string>();
-    const result: { code: string; label: string }[] = [];
-    for (const l of STT_LANGUAGES) {
-      if (!seen.has(l.code)) { seen.add(l.code); result.push(l); }
-    }
-    for (const l of TRANSLATE_LANGUAGES) {
-      if (!seen.has(l.code)) { seen.add(l.code); result.push({ code: l.code, label: `${l.label} (${l.native})` }); }
-    }
-    return result;
+  const nativeByCode = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const l of TRANSLATE_LANGUAGES) map[l.code] = l.native;
+    return map;
   }, []);
+
+  /*
+   * Active languages = STT language + all selected view languages.
+   * These appear at the top of the picker as the "in-use" group.
+   */
+  const activeCodes = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    const push = (c: string) => { if (!seen.has(c)) { seen.add(c); result.push(c); } };
+    if (local.stt.language) push(local.stt.language);
+    for (const c of local.viewLanguages) push(c);
+    return result;
+  }, [local.stt.language, local.viewLanguages]);
+
+  /*
+   * Remaining languages from the full translate list (not already active).
+   */
+  const otherLanguages = useMemo(() =>
+    TRANSLATE_LANGUAGES.filter((l) => !activeCodes.includes(l.code)),
+    [activeCodes],
+  );
+
+  const selectLang = (code: string) => {
+    setEditingLang(code);
+    setPickerOpen(false);
+  };
 
   const overrideEntries = Object.entries(local.ttsRates).sort((a, b) =>
     a[0].localeCompare(b[0]),
   );
 
   const hasExplicitOverride = editingLang in local.ttsRates;
+
+  const editingLabel = labelByCode[editingLang] ?? editingLang;
+  const editingNative = nativeByCode[editingLang];
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
@@ -120,6 +146,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
           <Gauge className="w-5 h-5" />
         </Button>
       </DialogTrigger>
+
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{t("ttsSpeed.title")}</DialogTitle>
@@ -142,18 +169,12 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
             <Slider
               id="ttsRateDefault"
               data-testid="slider-tts-rate-default"
-              min={RATE_MIN}
-              max={RATE_MAX}
-              step={RATE_STEP}
+              min={RATE_MIN} max={RATE_MAX} step={RATE_STEP}
               value={[local.ttsRateDefault]}
-              onValueChange={([v]) =>
-                setLocal((p) => ({ ...p, ttsRateDefault: v }))
-              }
+              onValueChange={([v]) => setLocal((p) => ({ ...p, ttsRateDefault: v }))}
               className="w-full"
             />
-            <p className="text-xs text-muted-foreground">
-              {t("ttsSpeed.defaultSpeedHint")}
-            </p>
+            <p className="text-xs text-muted-foreground">{t("ttsSpeed.defaultSpeedHint")}</p>
           </div>
 
           {/* Per-language editor */}
@@ -163,32 +184,82 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
             </p>
 
             <div className="space-y-1.5">
-              <Label htmlFor="ttsRateLang">{t("ttsSpeed.language")}</Label>
-              <Select value={editingLang} onValueChange={setEditingLang}>
-                <SelectTrigger
-                  id="ttsRateLang"
-                  data-testid="select-tts-rate-language"
-                  className="bg-background border-border"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {allLanguages.map((l) => (
-                    <SelectItem key={l.code} value={l.code}>
-                      {l.label}{" "}
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {l.code}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="ttsRateLangBtn">{t("ttsSpeed.language")}</Label>
+
+              {/* Searchable language combobox */}
+              <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="ttsRateLangBtn"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={pickerOpen}
+                    data-testid="select-tts-rate-language"
+                    className="w-full justify-between bg-background border-border font-normal"
+                  >
+                    <span className="flex items-center gap-2 min-w-0 truncate">
+                      <span className="truncate">{editingLabel}</span>
+                      {editingNative && (
+                        <span className="text-muted-foreground text-xs shrink-0">{editingNative}</span>
+                      )}
+                      <span className="font-mono text-xs text-muted-foreground shrink-0">{editingLang}</span>
+                    </span>
+                    <ChevronsUpDown className="w-4 h-4 opacity-50 shrink-0" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0" align="start" style={{ zIndex: 9999 }}>
+                  <Command>
+                    <CommandInput placeholder={t("ttsSpeed.searchLanguage")} />
+                    <CommandList>
+                      <CommandEmpty>{t("ttsSpeed.noLanguage")}</CommandEmpty>
+
+                      {/* In-use languages first */}
+                      {activeCodes.length > 0 && (
+                        <CommandGroup heading={t("ttsSpeed.activeLanguages")}>
+                          {activeCodes.map((code) => (
+                            <CommandItem
+                              key={code}
+                              value={`${labelByCode[code] ?? code} ${nativeByCode[code] ?? ""} ${code}`}
+                              onSelect={() => selectLang(code)}
+                              data-testid={`tts-speed-lang-${code}`}
+                            >
+                              <Check className={cn("w-3 h-3 shrink-0", editingLang === code ? "opacity-100" : "opacity-0")} />
+                              <span className="flex-1 truncate">{labelByCode[code] ?? code}</span>
+                              {nativeByCode[code] && (
+                                <span className="text-xs text-muted-foreground shrink-0">{nativeByCode[code]}</span>
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+
+                      {activeCodes.length > 0 && <CommandSeparator />}
+
+                      {/* All other translate languages */}
+                      <CommandGroup heading={t("playOrder.allLanguages")}>
+                        {otherLanguages.map((l) => (
+                          <CommandItem
+                            key={l.code}
+                            value={`${l.label} ${l.native} ${l.code}`}
+                            onSelect={() => selectLang(l.code)}
+                            data-testid={`tts-speed-lang-${l.code}`}
+                          >
+                            <Check className={cn("w-3 h-3 shrink-0", editingLang === l.code ? "opacity-100" : "opacity-0")} />
+                            <span className="flex-1 truncate">{l.label}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{l.native}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Label htmlFor="ttsRateForLang" className="text-sm">
-                  {t("ttsSpeed.speedFor", labelByCode[editingLang] ?? editingLang)}
+                  {t("ttsSpeed.speedFor", editingLabel)}
                 </Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {currentRate.toFixed(2)}×
@@ -200,18 +271,14 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
               <Slider
                 id="ttsRateForLang"
                 data-testid="slider-tts-rate-language"
-                min={RATE_MIN}
-                max={RATE_MAX}
-                step={RATE_STEP}
+                min={RATE_MIN} max={RATE_MAX} step={RATE_STEP}
                 value={[currentRate]}
                 onValueChange={([v]) => setRateForEditingLang(v)}
                 className="w-full"
               />
               {hasExplicitOverride && (
                 <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
+                  type="button" variant="ghost" size="sm"
                   onClick={() => clearOverride(editingLang)}
                   className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
                   data-testid="button-clear-tts-override"
@@ -237,18 +304,12 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
                   >
                     <span className="truncate">
                       {labelByCode[code] ?? code}{" "}
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {code}
-                      </span>
+                      <span className="text-muted-foreground font-mono text-xs">{code}</span>
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="tabular-nums text-muted-foreground">
-                        {rate.toFixed(2)}×
-                      </span>
+                      <span className="tabular-nums text-muted-foreground">{rate.toFixed(2)}×</span>
                       <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
+                        type="button" variant="ghost" size="icon"
                         onClick={() => clearOverride(code)}
                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
                         aria-label={t("ttsSpeed.removeOverride", code)}
@@ -265,11 +326,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            className="rounded-full font-sans border-2"
-          >
+          <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full font-sans border-2">
             {t("cancel")}
           </Button>
           <Button
