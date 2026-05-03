@@ -24,7 +24,7 @@ import { SttLanguageSwitcher } from "@/components/stt-language-switcher";
 import { ViewLanguagesSwitcher } from "@/components/view-languages-switcher";
 import { TtsPlayOrderDialog } from "@/components/tts-play-order-dialog";
 import { TranslatedLine } from "@/components/translated-line";
-import { QuickTranslate } from "@/components/quick-translate";
+
 import { translate, toGoogleLang } from "@/lib/translate";
 import {
   PLAY_ORIGINAL,
@@ -1695,7 +1695,6 @@ export default function Story() {
                             onClick={() => handlePlayMessage(msg, lang)}
                           />
                         ))}
-                        <QuickTranslate text={msg.content} />
                         {(msg.language || msg.model) && (
                           <div
                             className="mt-1 flex flex-wrap gap-1 text-[10px] font-sans text-muted-foreground/70 select-none"

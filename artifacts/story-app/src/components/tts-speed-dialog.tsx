@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type StorySettings } from "@/hooks/use-settings";
+import { TRANSLATE_LANGUAGES } from "@/config/translate-languages";
 import { STT_LANGUAGES } from "@/config/stt";
 import { useT } from "@/lib/i18n-context";
 
@@ -70,10 +71,33 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
     });
   };
 
+  /*
+   * Build a combined label map from both the full translation list and the
+   * STT list (which uses BCP-47 region codes like "en-US" that differ from
+   * the translation codes like "en").
+   */
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
+    for (const l of TRANSLATE_LANGUAGES) map[l.code] = l.label;
     for (const l of STT_LANGUAGES) map[l.code] = l.label;
     return map;
+  }, []);
+
+  /*
+   * Combined, deduplicated language list for the speed selector.
+   * STT_LANGUAGES come first (they're the ones in active use for dictation /
+   * TTS), followed by any additional translate-only languages.
+   */
+  const allLanguages = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { code: string; label: string }[] = [];
+    for (const l of STT_LANGUAGES) {
+      if (!seen.has(l.code)) { seen.add(l.code); result.push(l); }
+    }
+    for (const l of TRANSLATE_LANGUAGES) {
+      if (!seen.has(l.code)) { seen.add(l.code); result.push({ code: l.code, label: `${l.label} (${l.native})` }); }
+    }
+    return result;
   }, []);
 
   const overrideEntries = Object.entries(local.ttsRates).sort((a, b) =>
@@ -98,9 +122,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
       </DialogTrigger>
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>
-            {t("ttsSpeed.title")}
-          </DialogTitle>
+          <DialogTitle>{t("ttsSpeed.title")}</DialogTitle>
           <DialogDescription className="text-foreground/60">
             {t("ttsSpeed.description")}
           </DialogDescription>
@@ -151,7 +173,7 @@ export function TtsSpeedDialog({ settings, onSave }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-64">
-                  {STT_LANGUAGES.map((l) => (
+                  {allLanguages.map((l) => (
                     <SelectItem key={l.code} value={l.code}>
                       {l.label}{" "}
                       <span className="text-muted-foreground font-mono text-xs">

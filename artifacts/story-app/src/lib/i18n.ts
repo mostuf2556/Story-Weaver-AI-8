@@ -171,6 +171,7 @@ const en: Record<string, string> = {
   "playOrder.moveDown": "Move {0} down",
   "playOrder.remove": "Remove {0} from playback",
   "playOrder.tip": "Tip: pick one or more languages from the View dropdown to be able to add translations to the playback order.",
+  "playOrder.duplicatesAllowed": "The same language can be added more than once to repeat it.",
 
   "ttsSpeed.title": "Playback Speed",
   "ttsSpeed.ariaLabel": "Playback speed settings",
@@ -405,6 +406,7 @@ const he: Record<string, string> = {
   "playOrder.moveDown": "הזז את {0} למטה",
   "playOrder.remove": "הסר את {0} מניגון",
   "playOrder.tip": "טיפ: בחר שפה אחת או יותר מתפריט התצוגה כדי להוסיף תרגומים לסדר הניגון.",
+  "playOrder.duplicatesAllowed": "ניתן להוסיף את אותה שפה יותר מפעם אחת כדי לחזור עליה.",
 
   "ttsSpeed.title": "מהירות ניגון",
   "ttsSpeed.ariaLabel": "הגדרות מהירות ניגון",

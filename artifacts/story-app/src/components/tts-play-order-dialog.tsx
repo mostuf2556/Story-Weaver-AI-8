@@ -15,7 +15,7 @@ import {
   syncPlayOrderForView,
   type StorySettings,
 } from "@/hooks/use-settings";
-import { STT_LANGUAGES } from "@/config/stt";
+import { TRANSLATE_LANGUAGES } from "@/config/translate-languages";
 import { useT } from "@/lib/i18n-context";
 
 interface Props {
@@ -28,9 +28,10 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
   const [open, setOpen] = useState(false);
   const [order, setOrder] = useState<string[]>(settings.ttsPlayOrder);
 
+  /* Build a label map from the full translation-language list */
   const labelByCode = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const l of STT_LANGUAGES) map[l.code] = l.label;
+    for (const l of TRANSLATE_LANGUAGES) map[l.code] = l.label;
     return map;
   }, []);
 
@@ -43,8 +44,9 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
   const renderLabel = (item: string) =>
     item === PLAY_ORIGINAL
       ? t("playOrder.original")
-      : `${labelByCode[item] ?? item}`;
+      : (labelByCode[item] ?? item);
 
+  /* Move by index so duplicates are handled correctly */
   const move = (idx: number, delta: number) => {
     setOrder((prev) => {
       const next = [...prev];
@@ -55,12 +57,14 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
     });
   };
 
-  const remove = (item: string) => {
-    setOrder((prev) => prev.filter((x) => x !== item));
+  /* Remove by index so duplicates are handled correctly */
+  const remove = (idx: number) => {
+    setOrder((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  /* Add always appends — same item can appear multiple times */
   const add = (item: string) => {
-    setOrder((prev) => (prev.includes(item) ? prev : [...prev, item]));
+    setOrder((prev) => [...prev, item]);
   };
 
   const handleSave = () => {
@@ -68,9 +72,8 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
     setOpen(false);
   };
 
-  const addable = [PLAY_ORIGINAL, ...settings.viewLanguages].filter(
-    (item) => !order.includes(item),
-  );
+  /* All available items can always be added (duplicates allowed) */
+  const addable = [PLAY_ORIGINAL, ...settings.viewLanguages];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -88,9 +91,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
       </DialogTrigger>
       <DialogContent className="font-sans bg-card border-card-border w-[calc(100vw-2rem)] max-w-[460px] sm:max-w-[460px] max-h-[calc(100vh-2rem)] sm:max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>
-            {t("playOrder.title")}
-          </DialogTitle>
+          <DialogTitle>{t("playOrder.title")}</DialogTitle>
           <DialogDescription className="text-foreground/60">
             {t("playOrder.description")}
           </DialogDescription>
@@ -105,9 +106,9 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
             <ol className="space-y-1.5">
               {order.map((item, idx) => (
                 <li
-                  key={item}
+                  key={`${item}-${idx}`}
                   className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-3 py-2 text-sm"
-                  data-testid={`tts-play-order-item-${item}`}
+                  data-testid={`tts-play-order-item-${idx}`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
                     <span className="text-xs font-mono text-muted-foreground w-5 shrink-0">
@@ -131,7 +132,6 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                       onClick={() => move(idx, -1)}
                       disabled={idx === 0}
                       aria-label={t("playOrder.moveUp", renderLabel(item))}
-                      data-testid={`button-tts-order-up-${item}`}
                     >
                       <ArrowUp className="w-4 h-4" />
                     </Button>
@@ -143,7 +143,6 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                       onClick={() => move(idx, 1)}
                       disabled={idx === order.length - 1}
                       aria-label={t("playOrder.moveDown", renderLabel(item))}
-                      data-testid={`button-tts-order-down-${item}`}
                     >
                       <ArrowDown className="w-4 h-4" />
                     </Button>
@@ -152,9 +151,8 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => remove(item)}
+                      onClick={() => remove(idx)}
                       aria-label={t("playOrder.remove", renderLabel(item))}
-                      data-testid={`button-tts-order-remove-${item}`}
                     >
                       <X className="w-4 h-4" />
                     </Button>
@@ -164,6 +162,7 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
             </ol>
           )}
 
+          {/* Add section — always shows all available items, duplicates allowed */}
           {addable.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-border/40">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -185,6 +184,9 @@ export function TtsPlayOrderDialog({ settings, onSave }: Props) {
                   </Button>
                 ))}
               </div>
+              <p className="text-xs text-muted-foreground/70 italic">
+                {t("playOrder.duplicatesAllowed")}
+              </p>
             </div>
           )}
 
