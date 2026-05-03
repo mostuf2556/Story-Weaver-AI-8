@@ -5,6 +5,7 @@ import {
   useListOpenrouterMessages,
   useUpdateOpenrouterMessage,
   useDeleteOpenrouterMessage,
+  useDeleteOpenrouterMessageFromHere,
   useRegenerateOpenrouterMessage,
   getGetOpenrouterConversationQueryKey,
   getListOpenrouterMessagesQueryKey,
@@ -63,7 +64,15 @@ import {
   Merge,
   ChevronRight,
   ChevronDown,
+  ListEnd,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -249,6 +258,7 @@ export default function Story() {
   } = useStoryStream(id, settings);
   const updateMessage = useUpdateOpenrouterMessage();
   const deleteMessage = useDeleteOpenrouterMessage();
+  const deleteFromHere = useDeleteOpenrouterMessageFromHere();
   const regenerateMessage = useRegenerateOpenrouterMessage();
   // Track which message is currently being regenerated (so only that row shows
   // the spinner, not all of them).
@@ -1038,6 +1048,20 @@ export default function Story() {
     }
   };
 
+  const handleDeleteFromHere = async (messageId: number) => {
+    if (!confirm(t("story.confirmDeleteFromHere"))) return;
+    try {
+      await deleteFromHere.mutateAsync({ messageId });
+      queryClient.invalidateQueries({
+        queryKey: getListOpenrouterMessagesQueryKey(id),
+      });
+    } catch (err) {
+      console.error("Delete from here failed:", err);
+      playSound("error");
+      setActionError(formatActionError(t("story.errDeleteFromHere"), err));
+    }
+  };
+
   // Regenerate (rewrite) a single paragraph in place using AI completion.
   // The AI sees only the paragraphs that came BEFORE this one, so the rest of
   // the story remains untouched.
@@ -1586,14 +1610,34 @@ export default function Story() {
                       className="rounded-xl max-w-full max-h-80 object-contain shadow-md border border-border/30"
                     />
                     <div className="absolute top-2 end-2 opacity-0 group-hover:opacity-70 transition-opacity">
-                      <button
-                        onClick={() => handleDeleteMessage(msg.id)}
-                        disabled={deleteMessage.isPending}
-                        aria-label={t("story.deletePassage")}
-                        className="text-muted-foreground hover:text-destructive p-1 rounded bg-background/80"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            disabled={deleteMessage.isPending || deleteFromHere.isPending}
+                            aria-label={t("story.deletePassage")}
+                            className="text-muted-foreground hover:text-destructive p-1 rounded bg-background/80 disabled:opacity-30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="gap-2 text-destructive focus:text-destructive"
+                            onSelect={() => handleDeleteMessage(msg.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            {t("story.deleteOnlyThis")}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="gap-2 text-destructive focus:text-destructive"
+                            onSelect={() => handleDeleteFromHere(msg.id)}
+                          >
+                            <ListEnd className="w-4 h-4" />
+                            {t("story.deleteFromHereToEnd")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ) : (
@@ -1790,15 +1834,35 @@ export default function Story() {
                               <Wand2 className="w-5 h-5" />
                             )}
                           </button>
-                          <button
-                            onClick={() => handleDeleteMessage(msg.id)}
-                            disabled={deleteMessage.isPending}
-                            aria-label={t("story.deletePassage")}
-                            data-testid={`button-delete-message-${msg.id}`}
-                            className="text-muted-foreground hover:text-destructive p-1 rounded disabled:opacity-30"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                disabled={deleteMessage.isPending || deleteFromHere.isPending}
+                                aria-label={t("story.deletePassage")}
+                                data-testid={`button-delete-message-${msg.id}`}
+                                className="text-muted-foreground hover:text-destructive p-1 rounded disabled:opacity-30"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2 text-destructive focus:text-destructive"
+                                onSelect={() => handleDeleteMessage(msg.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                {t("story.deleteOnlyThis")}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="gap-2 text-destructive focus:text-destructive"
+                                onSelect={() => handleDeleteFromHere(msg.id)}
+                              >
+                                <ListEnd className="w-4 h-4" />
+                                {t("story.deleteFromHereToEnd")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     )}

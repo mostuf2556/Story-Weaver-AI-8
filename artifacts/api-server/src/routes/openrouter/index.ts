@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, or, gt, gte } from "drizzle-orm";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
@@ -691,6 +691,40 @@ router.delete(
       res.status(404).json({ error: "Message not found" });
       return;
     }
+    res.sendStatus(204);
+  },
+);
+
+router.delete(
+  "/openrouter/messages/:messageId/from-here",
+  async (req, res): Promise<void> => {
+    const params = UpdateOpenrouterMessageParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const [target] = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.id, params.data.messageId));
+    if (!target) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+    await db
+      .delete(messagesTable)
+      .where(
+        and(
+          eq(messagesTable.conversationId, target.conversationId),
+          or(
+            gt(messagesTable.createdAt, target.createdAt),
+            and(
+              eq(messagesTable.createdAt, target.createdAt),
+              gte(messagesTable.id, target.id),
+            ),
+          ),
+        ),
+      );
     res.sendStatus(204);
   },
 );

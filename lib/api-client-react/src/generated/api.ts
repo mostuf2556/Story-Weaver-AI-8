@@ -638,6 +638,90 @@ export const useDeleteOpenrouterMessage = <
 };
 
 /**
+ * @summary Delete a message and all subsequent messages in the same conversation
+ */
+export const getDeleteOpenrouterMessageFromHereUrl = (messageId: number) => {
+  return `/api/openrouter/messages/${messageId}/from-here`;
+};
+
+export const deleteOpenrouterMessageFromHere = async (
+  messageId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(
+    getDeleteOpenrouterMessageFromHereUrl(messageId),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteOpenrouterMessageFromHereMutationOptions = <
+  TError = ErrorType<OpenrouterError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteOpenrouterMessageFromHere>>,
+    TError,
+    { messageId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteOpenrouterMessageFromHere>>,
+  TError,
+  { messageId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteOpenrouterMessageFromHere"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteOpenrouterMessageFromHere>>,
+    { messageId: number }
+  > = (props) => {
+    const { messageId } = props ?? {};
+    return deleteOpenrouterMessageFromHere(messageId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteOpenrouterMessageFromHereMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteOpenrouterMessageFromHere>>
+>;
+
+export type DeleteOpenrouterMessageFromHereMutationError =
+  ErrorType<OpenrouterError>;
+
+export const useDeleteOpenrouterMessageFromHere = <
+  TError = ErrorType<OpenrouterError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteOpenrouterMessageFromHere>>,
+    TError,
+    { messageId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteOpenrouterMessageFromHere>>,
+  TError,
+  { messageId: number },
+  TContext
+> => {
+  return useMutation(getDeleteOpenrouterMessageFromHereMutationOptions(options));
+};
+
+/**
  * Replaces the content of an existing message with a freshly AI-generated paragraph.
 The AI sees only the messages that come BEFORE this one as context, then writes a
 new paragraph that fits at this position. The message's role and createdAt are preserved.
