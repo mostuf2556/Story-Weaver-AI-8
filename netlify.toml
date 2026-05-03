@@ -1,0 +1,26 @@
+[build]
+  command = "pnpm --filter @workspace/story-app run build"
+  publish = "artifacts/story-app/dist/public"
+
+[build.environment]
+  NODE_VERSION = "20"
+  PORT = "3000"
+  BASE_PATH = "/"
+
+# ---------------------------------------------------------------------------
+# API proxy
+# Set API_URL in the Netlify site's environment variables to the base URL of
+# your deployed API server (e.g. https://my-api.onrender.com).
+# All /api/* requests from the frontend will be forwarded there.
+# ---------------------------------------------------------------------------
+[[redirects]]
+  from = "/api/*"
+  to = ":API_URL/api/:splat"
+  status = 200
+  force = true
+
+# SPA catch-all — must be last
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
