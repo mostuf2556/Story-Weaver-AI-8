@@ -103,6 +103,8 @@ const en: Record<string, string> = {
   "story.labelView": "View",
   "story.passageLanguageTitle": "Language this passage was authored in",
   "story.passageModelTitle": "AI model that generated this passage",
+  "story.showTranslations": "Show translations",
+  "story.hideTranslations": "Hide translations",
 
   "aiSettings.title": "AI Settings",
   "aiSettings.description": "Model and generation parameters. Saved locally in your browser.",
@@ -346,6 +348,8 @@ const he: Record<string, string> = {
   "story.labelView": "תצוגה",
   "story.passageLanguageTitle": "השפה שבה נכתב קטע זה",
   "story.passageModelTitle": "מודל ה-AI שיצר קטע זה",
+  "story.showTranslations": "הצג תרגומים",
+  "story.hideTranslations": "הסתר תרגומים",
 
   "aiSettings.title": "הגדרות AI",
   "aiSettings.description": "פרמטרי מודל ויצירה. נשמר מקומית בדפדפן שלך.",

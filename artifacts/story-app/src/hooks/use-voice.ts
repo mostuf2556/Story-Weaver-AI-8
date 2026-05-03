@@ -342,7 +342,9 @@ export function useVoice(enabled: boolean) {
           resolve(transcript.trim());
         };
 
-        recognition.onerror = () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        recognition.onerror = (e: any) => {
+          console.warn("[useVoice.listenOnce] recognition error:", e.error ?? e);
           clearAllTimers();
           setState("idle");
           resolve(transcript.trim());
@@ -398,7 +400,9 @@ export function useVoice(enabled: boolean) {
         setState("idle");
         onEnd?.();
       };
-      recognition.onerror = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onerror = (e: any) => {
+        console.warn("[useVoice.listen] recognition error:", e.error ?? e);
         setState("idle");
         onEnd?.();
       };

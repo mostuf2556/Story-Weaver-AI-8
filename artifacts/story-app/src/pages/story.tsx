@@ -62,6 +62,7 @@ import {
   ImageIcon,
   Merge,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import {
   Sheet,
@@ -254,8 +255,21 @@ export default function Story() {
   const [regeneratingMsgId, setRegeneratingMsgId] = useState<number | null>(
     null,
   );
+  const [foldedMsgs, setFoldedMsgs] = useState<Set<number>>(() => new Set());
 
-  const voice = useVoice(settings.blindMode);
+  const toggleFoldedMsg = useCallback((msgId: number) => {
+    setFoldedMsgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) {
+        next.delete(msgId);
+      } else {
+        next.add(msgId);
+      }
+      return next;
+    });
+  }, []);
+
+  const voice = useVoice(true);
   const { playSound } = useSounds();
   useDocumentDir(settings.uiLanguage);
   const t = getT(settings.uiLanguage);
@@ -1684,17 +1698,34 @@ export default function Story() {
                             }
                           />
                         </div>
-                        {settings.viewLanguages.map((lang) => (
-                          <TranslatedLine
-                            key={lang}
-                            text={msg.content}
-                            toLang={lang}
-                            isPlaying={
-                              playingMsgId === msg.id && playingItem === lang
-                            }
-                            onClick={() => handlePlayMessage(msg, lang)}
-                          />
-                        ))}
+                        {settings.viewLanguages.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleFoldedMsg(msg.id!)}
+                              className="mt-2 flex items-center gap-1 text-[11px] font-sans text-muted-foreground/60 hover:text-muted-foreground transition-colors select-none"
+                              aria-label={foldedMsgs.has(msg.id!) ? t("story.showTranslations") : t("story.hideTranslations")}
+                            >
+                              {foldedMsgs.has(msg.id!) ? (
+                                <ChevronRight className="w-3 h-3" />
+                              ) : (
+                                <ChevronDown className="w-3 h-3" />
+                              )}
+                              <span>{foldedMsgs.has(msg.id!) ? t("story.showTranslations") : t("story.hideTranslations")}</span>
+                            </button>
+                            {!foldedMsgs.has(msg.id!) && settings.viewLanguages.map((lang) => (
+                              <TranslatedLine
+                                key={lang}
+                                text={msg.content}
+                                toLang={lang}
+                                isPlaying={
+                                  playingMsgId === msg.id && playingItem === lang
+                                }
+                                onClick={() => handlePlayMessage(msg, lang)}
+                              />
+                            ))}
+                          </>
+                        )}
                         {(msg.language || msg.model) && (
                           <div
                             className="mt-1 flex flex-wrap gap-1 text-[10px] font-sans text-muted-foreground/70 select-none"
