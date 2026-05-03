@@ -255,19 +255,7 @@ export default function Story() {
   const [regeneratingMsgId, setRegeneratingMsgId] = useState<number | null>(
     null,
   );
-  const [foldedMsgs, setFoldedMsgs] = useState<Set<number>>(() => new Set());
-
-  const toggleFoldedMsg = useCallback((msgId: number) => {
-    setFoldedMsgs((prev) => {
-      const next = new Set(prev);
-      if (next.has(msgId)) {
-        next.delete(msgId);
-      } else {
-        next.add(msgId);
-      }
-      return next;
-    });
-  }, []);
+  const [translationsFolded, setTranslationsFolded] = useState(false);
 
   const voice = useVoice(true);
   const { playSound } = useSounds();
@@ -528,9 +516,7 @@ export default function Story() {
           // Tag which line is "live" so its row gets the playing border.
           setPlayingItem(unit.isOriginal ? PLAY_ORIGINAL : unit.lang);
           await voice.speak(unit.text, unit.lang, unit.rate, {
-            onWord: unit.isOriginal
-              ? ({ wordIndex }) => setCurrentWordIdx(wordIndex)
-              : undefined,
+            onWord: ({ wordIndex }) => setCurrentWordIdx(wordIndex),
             voiceName: unit.voiceName,
           });
         }
@@ -652,9 +638,7 @@ export default function Story() {
           setCurrentWordIdx(null);
           setPlayingItem(unit.isOriginal ? PLAY_ORIGINAL : unit.lang);
           await voice.speak(unit.text, unit.lang, unit.rate, {
-            onWord: unit.isOriginal
-              ? ({ wordIndex }) => setCurrentWordIdx(wordIndex)
-              : undefined,
+            onWord: ({ wordIndex }) => setCurrentWordIdx(wordIndex),
             voiceName: unit.voiceName,
           });
         }
@@ -742,6 +726,13 @@ export default function Story() {
   useEffect(() => {
     endOfStoryRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamedContent, isTyping]);
+
+  // Auto-expand translations whenever a translated line starts playing
+  useEffect(() => {
+    if (playingItem && playingItem !== PLAY_ORIGINAL) {
+      setTranslationsFolded(false);
+    }
+  }, [playingItem]);
 
   // Settings ref so the running blind loop always reads the latest values
   const settingsRef = useRef(settings);
@@ -1702,25 +1693,24 @@ export default function Story() {
                           <>
                             <button
                               type="button"
-                              onClick={() => toggleFoldedMsg(msg.id!)}
+                              onClick={() => setTranslationsFolded((f) => !f)}
                               className="mt-2 flex items-center gap-1 text-[11px] font-sans text-muted-foreground/60 hover:text-muted-foreground transition-colors select-none"
-                              aria-label={foldedMsgs.has(msg.id!) ? t("story.showTranslations") : t("story.hideTranslations")}
+                              aria-label={translationsFolded ? t("story.showTranslations") : t("story.hideTranslations")}
                             >
-                              {foldedMsgs.has(msg.id!) ? (
+                              {translationsFolded ? (
                                 <ChevronRight className="w-3 h-3" />
                               ) : (
                                 <ChevronDown className="w-3 h-3" />
                               )}
-                              <span>{foldedMsgs.has(msg.id!) ? t("story.showTranslations") : t("story.hideTranslations")}</span>
+                              <span>{translationsFolded ? t("story.showTranslations") : t("story.hideTranslations")}</span>
                             </button>
-                            {!foldedMsgs.has(msg.id!) && settings.viewLanguages.map((lang) => (
+                            {!translationsFolded && settings.viewLanguages.map((lang) => (
                               <TranslatedLine
                                 key={lang}
                                 text={msg.content}
                                 toLang={lang}
-                                isPlaying={
-                                  playingMsgId === msg.id && playingItem === lang
-                                }
+                                isPlaying={playingMsgId === msg.id && playingItem === lang}
+                                highlightWord={playingMsgId === msg.id && playingItem === lang ? currentWordIdx : null}
                                 onClick={() => handlePlayMessage(msg, lang)}
                               />
                             ))}
