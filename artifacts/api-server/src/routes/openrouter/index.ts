@@ -369,8 +369,12 @@ router.post(
     const cfg = loadConfig();
     const client = getClient(apiKey, apiUrl, cfg);
     const effectiveModel = model?.trim() || getDefaultModel(cfg);
-    const maxWords = maxTokens ?? 10;
-    const effectiveMaxTokens = Math.ceil(maxWords / 0.75);
+    const maxWords = maxTokens ?? 40;
+    // Multiply by 3 instead of dividing by 0.75: non-Latin scripts like
+    // Hebrew and Arabic use 3–4 tokens per word, so a generous token budget
+    // is needed to avoid mid-sentence truncation. The system prompt word cap
+    // handles the actual length for all languages.
+    const effectiveMaxTokens = maxWords * 3;
 
     try {
       const streamMessages = [
@@ -482,8 +486,8 @@ router.post(
     const cfg = loadConfig();
     const client = getClient(apiKey, apiUrl, cfg);
     const effectiveModel = model?.trim() || getDefaultModel(cfg);
-    const maxWords = maxTokens ?? 10;
-    const effectiveMaxTokens = Math.ceil(maxWords / 0.75);
+    const maxWords = maxTokens ?? 40;
+    const effectiveMaxTokens = maxWords * 3;
 
     const requestPayload = {
       model: effectiveModel,
@@ -744,8 +748,8 @@ router.post(
     const cfg = loadConfig();
     const client = getClient(apiKey, apiUrl, cfg);
     const effectiveModel = model?.trim() || getDefaultModel(cfg);
-    const maxWords = maxTokens ?? 10;
-    const effectiveMaxTokens = Math.ceil(maxWords / 0.75);
+    const maxWords = maxTokens ?? 40;
+    const effectiveMaxTokens = maxWords * 3;
 
     const requestPayload = {
       model: effectiveModel,

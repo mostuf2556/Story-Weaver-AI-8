@@ -112,7 +112,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
               id="maxTokens"
               data-testid="slider-max-tokens"
               min={1}
-              max={20}
+              max={100}
               step={1}
               value={[local.maxTokens]}
               onValueChange={([v]) => setLocal((p) => ({ ...p, maxTokens: v }))}
@@ -120,7 +120,7 @@ export function OpenrouterSettingsDialog({ settings, onSave }: Props) {
             />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>{t("aiSettings.oneWord")}</span>
-              <span>{t("aiSettings.twentyWords")}</span>
+              <span>{t("aiSettings.maxWords")}</span>
             </div>
           </div>
 

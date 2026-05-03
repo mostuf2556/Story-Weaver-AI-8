@@ -110,7 +110,7 @@ const STORAGE_KEY = "story-together-settings";
 
 const DEFAULTS: StorySettings = {
   model: "openrouter/free",
-  maxTokens: 10,
+  maxTokens: 40,
   temperature: 1.0,
   apiKey: "",
   apiUrl: "",
