@@ -81,4 +81,3 @@ test-results
 .env
 .env.local
 .env.*.local
-.github
