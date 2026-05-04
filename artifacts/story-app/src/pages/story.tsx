@@ -65,6 +65,8 @@ import {
   ChevronRight,
   ChevronDown,
   ListEnd,
+  MoreVertical,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -80,6 +82,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getT } from "@/lib/i18n";
@@ -1137,6 +1145,46 @@ export default function Story() {
   const isSpeaking = voice.state === "speaking";
   const isListening = voice.state === "listening";
 
+  // ── Swipe-to-regenerate on mobile ──────────────────────────────────────
+  // Tracks the X position where the touch started so we can compute how far
+  // the finger moved horizontally.
+  const swipeTouchStartX = useRef<number | null>(null);
+  // Which message the in-progress swipe belongs to (drives the visual shift).
+  const [swipingMsgId, setSwipingMsgId] = useState<number | null>(null);
+  // Current horizontal offset (px, always ≤ 0 for left-swipes) fed as a CSS
+  // transform so the paragraph visually follows the finger.
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const SWIPE_THRESHOLD = 72; // px needed for a confirmed regenerate
+
+  const handleSwipeTouchStart = useCallback((e: React.TouchEvent, msgId: number) => {
+    swipeTouchStartX.current = e.touches[0].clientX;
+    setSwipingMsgId(msgId);
+    setSwipeOffset(0);
+  }, []);
+
+  const handleSwipeTouchMove = useCallback((e: React.TouchEvent) => {
+    if (swipeTouchStartX.current === null) return;
+    const delta = e.touches[0].clientX - swipeTouchStartX.current;
+    if (delta < 0) {
+      // Clamp to a bit past the threshold so the arrow fully appears
+      setSwipeOffset(Math.max(delta, -SWIPE_THRESHOLD * 1.3));
+    }
+  }, []);
+
+  const handleSwipeTouchEnd = useCallback(
+    (e: React.TouchEvent, msgId: number) => {
+      if (swipeTouchStartX.current === null) return;
+      const delta = e.changedTouches[0].clientX - swipeTouchStartX.current;
+      swipeTouchStartX.current = null;
+      setSwipeOffset(0);
+      setSwipingMsgId(null);
+      if (delta < -SWIPE_THRESHOLD && regeneratingMsgId === null) {
+        handleRegenerateMessage(msgId);
+      }
+    },
+    [handleRegenerateMessage, regeneratingMsgId],
+  );
+
   // Normal mode voice send — tap once to start, tap again to stop early
   const handleVoiceSend = useCallback(() => {
     if (isTyping) return;
@@ -1288,7 +1336,7 @@ export default function Story() {
             </div>
           )}
 
-          {/* Stop speaking (blind mode only) */}
+          {/* Stop speaking (blind mode only) — contextual, always visible */}
           {settings.blindMode && isSpeaking && (
             <Button
               variant="ghost"
@@ -1302,7 +1350,7 @@ export default function Story() {
             </Button>
           )}
 
-          {/* Refresh listening (blind mode only) */}
+          {/* Refresh listening (blind mode only) — contextual, always visible */}
           {settings.blindMode && (
             <Button
               variant="ghost"
@@ -1317,76 +1365,96 @@ export default function Story() {
             </Button>
           )}
 
-          {/* Blind mode toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              settings.blindMode
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            onClick={() => updateSettings({ blindMode: !settings.blindMode })}
-            aria-label={settings.blindMode ? t("story.disableBlindMode") : t("story.enableBlindMode")}
-            aria-pressed={settings.blindMode}
-            title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
-            data-testid="button-toggle-blind-mode"
-          >
-            {settings.blindMode ? <Ear className="w-5 h-5" /> : <EarOff className="w-5 h-5" />}
-          </Button>
-
-          {/* Manual / auto AI turn toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              settings.gameMode === "manual"
-                ? "text-amber-400"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            onClick={() =>
-              updateSettings({ gameMode: settings.gameMode === "manual" ? "auto" : "manual" })
-            }
-            aria-label={settings.gameMode === "manual" ? t("story.switchToAutoAi") : t("story.switchToManualAi")}
-            aria-pressed={settings.gameMode === "manual"}
-            title={settings.gameMode === "manual" ? t("story.aiModeManual") : t("story.aiModeAuto")}
-            data-testid="button-toggle-game-mode"
-          >
-            {settings.gameMode === "manual" ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
-          </Button>
-
-          {/* Play / Stop the entire story */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handlePlayStory}
-            disabled={!messages || messages.length === 0}
-            className={cn(
-              isPlayingStory ? "text-primary" : "text-muted-foreground hover:text-foreground",
-            )}
-            aria-label={isPlayingStory ? t("story.stopStoryAria") : t("story.playStoryAria")}
-            aria-pressed={isPlayingStory}
-            title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
-            data-testid="button-play-story"
-          >
-            {isPlayingStory ? <StopCircle className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-          </Button>
-
-          {/* Settings Sheet — all settings dialogs consolidated here so the
-              toolbar stays compact and the header never overflows. */}
-          <Sheet>
-            <SheetTrigger asChild>
+          {/* ── Single toolbar trigger: one icon reveals the full action bar ── */}
+          <Popover>
+            <PopoverTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
                 className="text-muted-foreground hover:text-foreground"
                 aria-label={t("story.storySettings")}
-                title={t("story.storySettings")}
               >
-                <Settings className="w-5 h-5" />
+                <MoreVertical className="w-5 h-5" />
               </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-80 overflow-y-auto">
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-auto p-1.5">
+              <div className="flex items-center gap-0.5">
+
+                {/* Blind mode toggle */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-9 w-9",
+                    settings.blindMode
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => updateSettings({ blindMode: !settings.blindMode })}
+                  aria-label={settings.blindMode ? t("story.disableBlindMode") : t("story.enableBlindMode")}
+                  aria-pressed={settings.blindMode}
+                  title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
+                  data-testid="button-toggle-blind-mode"
+                >
+                  {settings.blindMode ? <Ear className="w-5 h-5" /> : <EarOff className="w-5 h-5" />}
+                </Button>
+
+                {/* Manual / auto AI turn toggle */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-9 w-9",
+                    settings.gameMode === "manual"
+                      ? "text-amber-400"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() =>
+                    updateSettings({ gameMode: settings.gameMode === "manual" ? "auto" : "manual" })
+                  }
+                  aria-label={settings.gameMode === "manual" ? t("story.switchToAutoAi") : t("story.switchToManualAi")}
+                  aria-pressed={settings.gameMode === "manual"}
+                  title={settings.gameMode === "manual" ? t("story.aiModeManual") : t("story.aiModeAuto")}
+                  data-testid="button-toggle-game-mode"
+                >
+                  {settings.gameMode === "manual" ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+                </Button>
+
+                {/* Play / Stop the entire story */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-9 w-9",
+                    isPlayingStory ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={handlePlayStory}
+                  disabled={!messages || messages.length === 0}
+                  aria-label={isPlayingStory ? t("story.stopStoryAria") : t("story.playStoryAria")}
+                  aria-pressed={isPlayingStory}
+                  title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
+                  data-testid="button-play-story"
+                >
+                  {isPlayingStory ? <StopCircle className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                </Button>
+
+                {/* Separator */}
+                <div className="w-px h-5 bg-border mx-0.5" />
+
+                {/* Settings — opens the Sheet from inside the popover */}
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                      aria-label={t("story.storySettings")}
+                      title={t("story.storySettings")}
+                    >
+                      <Settings className="w-5 h-5" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-80 overflow-y-auto">
               <SheetHeader>
                 <SheetTitle style={{ fontFamily: "'Nunito', sans-serif" }}>
                   {t("story.storySettings")}
@@ -1533,8 +1601,12 @@ export default function Story() {
                 </div>
 
               </div>
-            </SheetContent>
-          </Sheet>
+                  </SheetContent>
+                </Sheet>
+
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </header>
 
@@ -1649,7 +1721,27 @@ export default function Story() {
                         ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
                         : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
                     )}
+                    {...(msg.role === "assistant"
+                      ? {
+                          onTouchStart: (e) => handleSwipeTouchStart(e, msg.id),
+                          onTouchMove: handleSwipeTouchMove,
+                          onTouchEnd: (e) => handleSwipeTouchEnd(e, msg.id),
+                          style:
+                            swipingMsgId === msg.id
+                              ? { transform: `translateX(${swipeOffset}px)`, transition: "none" }
+                              : undefined,
+                        }
+                      : {})}
                   >
+                    {/* Swipe-to-regenerate hint icon — only visible while swiping */}
+                    {swipingMsgId === msg.id && swipeOffset < -16 && (
+                      <div
+                        className="pointer-events-none absolute -end-8 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full bg-primary/15 text-primary"
+                        aria-hidden
+                      >
+                        <Wand2 className="w-4 h-4" />
+                      </div>
+                    )}
                     <div
                       className={cn(
                         "absolute -start-8 top-1.5 opacity-0 group-hover:opacity-50 transition-opacity",
@@ -1785,78 +1877,77 @@ export default function Story() {
                             )}
                           </div>
                         )}
-                        <div className="absolute -end-8 top-0.5 flex flex-row gap-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handlePlayMessage(msg)}
-                            aria-label={
-                              playingMsgId === msg.id
-                                ? t("story.stopReadPassage")
-                                : t("story.readPassage")
-                            }
-                            title={
-                              playingMsgId === msg.id
-                                ? t("story.stopReadPassage")
-                                : t("story.readPassage")
-                            }
-                            data-testid={`button-play-message-${msg.id}`}
-                            className={cn(
-                              "p-1 rounded",
-                              playingMsgId === msg.id
-                                ? "text-primary"
-                                : "text-muted-foreground hover:text-primary",
-                            )}
-                          >
-                            {playingMsgId === msg.id ? (
-                              <StopCircle className="w-5 h-5" />
-                            ) : (
-                              <Volume2 className="w-5 h-5" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => startEdit(msg.id, msg.content)}
-                            aria-label={t("story.editPassage")}
-                            data-testid={`button-edit-message-${msg.id}`}
-                            className="text-muted-foreground hover:text-primary p-1 rounded"
-                          >
-                            <Pencil className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => handleRegenerateMessage(msg.id)}
-                            disabled={regeneratingMsgId !== null}
-                            aria-label={t("story.regeneratePassage")}
-                            title={t("story.regenerateTitle")}
-                            data-testid={`button-regenerate-message-${msg.id}`}
-                            className="text-muted-foreground hover:text-primary p-1 rounded disabled:opacity-30"
-                          >
-                            {regeneratingMsgId === msg.id ? (
-                              <RefreshCw className="w-5 h-5 animate-spin" />
-                            ) : (
-                              <Wand2 className="w-5 h-5" />
-                            )}
-                          </button>
+                        {/* ── Per-message action menu — single trigger, fully inside container ──
+                            Previously the 4 buttons lived at -end-8 (outside the box) which
+                            caused them to be clipped on mobile. Now a single MoreHorizontal
+                            button sits at the top-right corner inside the message and opens a
+                            DropdownMenu with all available actions. */}
+                        <div className="absolute top-1 end-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
-                                disabled={deleteMessage.isPending || deleteFromHere.isPending}
-                                aria-label={t("story.deletePassage")}
-                                data-testid={`button-delete-message-${msg.id}`}
-                                className="text-muted-foreground hover:text-destructive p-1 rounded disabled:opacity-30"
+                                aria-label={t("story.editPassage")}
+                                data-testid={`button-actions-message-${msg.id}`}
+                                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60"
                               >
-                                <Trash2 className="w-5 h-5" />
+                                <MoreHorizontal className="w-4 h-4" />
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {/* Play / stop */}
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onSelect={() => handlePlayMessage(msg)}
+                                data-testid={`button-play-message-${msg.id}`}
+                              >
+                                {playingMsgId === msg.id ? (
+                                  <StopCircle className="w-4 h-4 text-primary" />
+                                ) : (
+                                  <Volume2 className="w-4 h-4" />
+                                )}
+                                {playingMsgId === msg.id
+                                  ? t("story.stopReadPassage")
+                                  : t("story.readPassage")}
+                              </DropdownMenuItem>
+                              {/* Edit */}
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onSelect={() => startEdit(msg.id, msg.content)}
+                                data-testid={`button-edit-message-${msg.id}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                                {t("story.editPassage")}
+                              </DropdownMenuItem>
+                              {/* Regenerate */}
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onSelect={() => handleRegenerateMessage(msg.id)}
+                                disabled={regeneratingMsgId !== null}
+                                data-testid={`button-regenerate-message-${msg.id}`}
+                              >
+                                {regeneratingMsgId === msg.id ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Wand2 className="w-4 h-4" />
+                                )}
+                                {t("story.regeneratePassage")}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {/* Delete this passage */}
                               <DropdownMenuItem
                                 className="gap-2 text-destructive focus:text-destructive"
                                 onSelect={() => handleDeleteMessage(msg.id)}
+                                disabled={deleteMessage.isPending || deleteFromHere.isPending}
+                                data-testid={`button-delete-message-${msg.id}`}
                               >
                                 <Trash2 className="w-4 h-4" />
                                 {t("story.deleteOnlyThis")}
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                              {/* Delete from here to end */}
                               <DropdownMenuItem
                                 className="gap-2 text-destructive focus:text-destructive"
                                 onSelect={() => handleDeleteFromHere(msg.id)}
+                                disabled={deleteMessage.isPending || deleteFromHere.isPending}
                               >
                                 <ListEnd className="w-4 h-4" />
                                 {t("story.deleteFromHereToEnd")}
