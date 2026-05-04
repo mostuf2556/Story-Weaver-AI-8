@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Bug, Trash2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSettings } from "@/hooks/use-settings";
 import { useDocumentDir } from "@/hooks/use-document-dir";
 import { OpenrouterSettingsDialog } from "@/components/openrouter-settings-dialog";
@@ -55,7 +56,7 @@ export default function Home() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const { status: healthStatus, refetch: healthRefetch } = useHealthCheck(30_000);
+  const { status: healthStatus, history: healthHistory, refetch: healthRefetch } = useHealthCheck(30_000);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -134,30 +135,49 @@ export default function Home() {
 
         {/* Top settings bar */}
         <div className="flex justify-end items-center gap-1.5 px-4 sm:px-8 pt-4 sm:pt-6">
-          {/* Server health dot */}
-          <button
-            onClick={() => healthRefetch()}
-            className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            title={
-              healthStatus === "ok"
-                ? "Server online"
-                : healthStatus === "error"
-                ? "Server offline — click to retry"
-                : "Checking server…"
-            }
-            aria-label="Server health"
-          >
-            <div
-              className={cn(
-                "w-2.5 h-2.5 rounded-full transition-colors",
-                healthStatus === "ok"
-                  ? "bg-emerald-400"
-                  : healthStatus === "error"
-                  ? "bg-red-400 animate-pulse"
-                  : "bg-muted-foreground/30",
+          {/* Server health dot — opens history popover on click */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Server health"
+              >
+                <div
+                  className={cn(
+                    "w-2.5 h-2.5 rounded-full transition-colors",
+                    healthStatus === "ok"
+                      ? "bg-emerald-400"
+                      : healthStatus === "error"
+                      ? "bg-red-400 animate-pulse"
+                      : "bg-muted-foreground/30",
+                  )}
+                />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Server Health</span>
+                <button onClick={() => healthRefetch()} className="text-xs text-primary hover:underline font-sans">
+                  Check now
+                </button>
+              </div>
+              {healthHistory.length === 0 ? (
+                <p className="text-xs text-muted-foreground font-sans">No checks yet…</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {healthHistory.slice(0, 6).map((entry, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs font-sans">
+                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", entry.ok ? "bg-emerald-400" : "bg-red-400")} />
+                      <span className="text-muted-foreground flex-1 tabular-nums">{entry.ts.toLocaleTimeString()}</span>
+                      <span className={cn("tabular-nums", entry.ok ? "text-emerald-500 dark:text-emerald-400" : "text-red-500 dark:text-red-400")}>
+                        {entry.ok ? `${entry.latencyMs}ms` : (entry.statusCode ? `HTTP ${entry.statusCode}` : "err")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
-            />
-          </button>
+            </PopoverContent>
+          </Popover>
           {/* Debug panel toggle */}
           <Button
             variant="ghost"

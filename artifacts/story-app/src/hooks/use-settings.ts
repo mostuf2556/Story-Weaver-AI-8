@@ -81,6 +81,14 @@ export interface StorySettings {
    */
   aiMaxRetries: number;
   /**
+   * Magic stop word for voice dictation. When the user's transcript
+   * matches this word exactly (case-insensitive) `magicStopCount` times
+   * in a row, voice dictation is automatically stopped.
+   */
+  magicStopWord: string;
+  /** How many consecutive "stop word" utterances trigger auto-stop. Default 3. */
+  magicStopCount: number;
+  /**
    * Language used for all UI text (dialogs, labels, buttons).
    * Independent of the story / AI language. Defaults to "he" (Hebrew).
    */
@@ -126,6 +134,8 @@ const DEFAULTS: StorySettings = {
   ttsRateDefault: 0.95,
   ttsVoices: {},
   aiMaxRetries: 3,
+  magicStopWord: "stop",
+  magicStopCount: 3,
   uiLanguage: "he",
   settingsVersion: SETTINGS_VERSION,
 };

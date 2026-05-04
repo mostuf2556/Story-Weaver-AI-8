@@ -54,6 +54,7 @@ import {
   AlertCircle,
   Trash2,
   RefreshCw,
+  Pause,
   Play,
   StopCircle,
   Zap,
@@ -116,6 +117,16 @@ function langCodeToName(code: string): string {
     if (l.code.toLowerCase() === base) return l.label;
   }
   return code;
+}
+
+/**
+ * Returns true for languages that flow right-to-left (Arabic, Hebrew, etc.)
+ * so the story line container can set dir="rtl" automatically.
+ */
+function isRtlLang(code: string): boolean {
+  if (!code) return false;
+  const base = code.toLowerCase().split("-")[0];
+  return ["ar", "he", "fa", "ur", "yi", "ps", "sd", "dv"].includes(base);
 }
 
 /**
@@ -306,7 +317,7 @@ export default function Story() {
   const t = getT(settings.uiLanguage);
 
   // Server health indicator
-  const { status: healthStatus, refetch: healthRefetch } = useHealthCheck(30_000);
+  const { status: healthStatus, history: healthHistory, refetch: healthRefetch } = useHealthCheck(30_000);
 
   // Debug panel — driven by config.json `debugToggle` field (default true)
   const [debugToggle, setDebugToggle] = useState(true);
@@ -324,6 +335,12 @@ export default function Story() {
 
   // Bottom action sheet — which message's actions are open on mobile
   const [actionSheetMsg, setActionSheetMsg] = useState<OpenrouterMessage | null>(null);
+  // ID of the story line that is currently highlighted (set when bottom sheet opens)
+  const [selectedMsgId, setSelectedMsgId] = useState<number | null>(null);
+  // Counts consecutive magic-stop-word utterances in voice dictation mode
+  const stopWordCountRef = useRef(0);
+  // Tracks the last transcript value across sessions for magic-word detection
+  const lastTranscriptRef = useRef("");
 
   // Inline editing
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -1224,14 +1241,29 @@ export default function Story() {
       setInterimTranscript("");
       return;
     }
+    const magicStopWord = (settingsRef.current.magicStopWord ?? "stop").toLowerCase();
+    const magicStopCount = settingsRef.current.magicStopCount ?? 3;
     voice.listen(
       (transcript) => {
-        // Called for both interim and final results — shows live transcription
+        lastTranscriptRef.current = transcript;
         setDraft(transcript);
         setInterimTranscript(transcript);
       },
       async () => {
-        // STT ended — play completion sound and clear interim indicator
+        // STT ended — check for magic stop word then play completion sound
+        const final = lastTranscriptRef.current.trim().toLowerCase();
+        lastTranscriptRef.current = "";
+        if (final === magicStopWord) {
+          stopWordCountRef.current += 1;
+          if (stopWordCountRef.current >= magicStopCount) {
+            stopWordCountRef.current = 0;
+            setDraft("");
+            setInterimTranscript("");
+            return;
+          }
+        } else if (final !== "") {
+          stopWordCountRef.current = 0;
+        }
         playSound("stt-complete");
         setInterimTranscript("");
       },
@@ -1396,109 +1428,166 @@ export default function Story() {
             </Button>
           )}
 
-          {/* Server health dot — pulse-checks every 30 s, click to recheck */}
-          <button
-            onClick={() => healthRefetch()}
-            className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            title={
-              healthStatus === "ok"
-                ? "Server online"
-                : healthStatus === "error"
-                ? "Server offline — click to retry"
-                : "Checking server…"
-            }
-            aria-label="Server health"
-          >
-            <div
-              className={cn(
-                "w-2.5 h-2.5 rounded-full transition-colors",
-                healthStatus === "ok"
-                  ? "bg-emerald-400"
-                  : healthStatus === "error"
-                  ? "bg-red-400 animate-pulse"
-                  : "bg-muted-foreground/30",
-              )}
-            />
-          </button>
-
-          {/* ── Single toolbar trigger: one icon reveals the full action bar ── */}
+          {/* Health dot — click to open history popover */}
           <Popover>
             <PopoverTrigger asChild>
+              <button
+                className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Server health"
+              >
+                <div
+                  className={cn(
+                    "w-2.5 h-2.5 rounded-full transition-colors",
+                    healthStatus === "ok"
+                      ? "bg-emerald-400"
+                      : healthStatus === "error"
+                      ? "bg-red-400 animate-pulse"
+                      : "bg-muted-foreground/30",
+                  )}
+                />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Server Health</span>
+                <button onClick={() => healthRefetch()} className="text-xs text-primary hover:underline font-sans">
+                  Check now
+                </button>
+              </div>
+              {healthHistory.length === 0 ? (
+                <p className="text-xs text-muted-foreground font-sans">No checks yet…</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {healthHistory.slice(0, 6).map((entry, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs font-sans">
+                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", entry.ok ? "bg-emerald-400" : "bg-red-400")} />
+                      <span className="text-muted-foreground flex-1 tabular-nums">{entry.ts.toLocaleTimeString()}</span>
+                      <span className={cn("tabular-nums", entry.ok ? "text-emerald-500 dark:text-emerald-400" : "text-red-500 dark:text-red-400")}>
+                        {entry.ok ? `${entry.latencyMs}ms` : (entry.statusCode ? `HTTP ${entry.statusCode}` : "err")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          {/* ── Desktop toolbar: all icons shown inline on md+ ── */}
+          <div className="hidden md:flex items-center gap-0.5">
+            <ThemeToggle />
+            {debugToggle && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-muted-foreground hover:text-foreground"
-                aria-label={t("story.storySettings")}
+                className={cn("h-9 w-9", debugPanelOpen ? "text-amber-400 bg-amber-400/10" : "text-muted-foreground hover:text-foreground")}
+                onClick={() => setDebugPanelOpen((v) => !v)}
+                aria-label={debugPanelOpen ? t("story.debugClose") : t("story.debugOpen")}
+                title="Debug"
               >
-                <MoreVertical className="w-5 h-5" />
+                <Bug className="w-5 h-5" />
               </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-auto p-1.5">
-              <div className="flex items-center gap-0.5">
+            )}
+            <div className="w-px h-5 bg-border mx-0.5" />
+            <Button
+              variant="ghost" size="icon"
+              className={cn("h-9 w-9", settings.blindMode ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+              onClick={() => updateSettings({ blindMode: !settings.blindMode })}
+              aria-label={settings.blindMode ? t("story.disableBlindMode") : t("story.enableBlindMode")}
+              aria-pressed={settings.blindMode}
+              title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
+              data-testid="button-toggle-blind-mode"
+            >
+              {settings.blindMode ? <Ear className="w-5 h-5" /> : <EarOff className="w-5 h-5" />}
+            </Button>
+            <Button
+              variant="ghost" size="icon"
+              className={cn("h-9 w-9", settings.gameMode === "manual" ? "text-amber-400" : "text-muted-foreground hover:text-foreground")}
+              onClick={() => updateSettings({ gameMode: settings.gameMode === "manual" ? "auto" : "manual" })}
+              aria-label={settings.gameMode === "manual" ? t("story.switchToAutoAi") : t("story.switchToManualAi")}
+              aria-pressed={settings.gameMode === "manual"}
+              title={settings.gameMode === "manual" ? t("story.aiModeManual") : t("story.aiModeAuto")}
+              data-testid="button-toggle-game-mode"
+            >
+              {settings.gameMode === "manual" ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+            </Button>
+            <Button
+              variant="ghost" size="icon"
+              className={cn("h-9 w-9", isPlayingStory ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+              onClick={handlePlayStory}
+              disabled={!messages || messages.length === 0}
+              aria-label={isPlayingStory ? t("story.stopStoryAria") : t("story.playStoryAria")}
+              aria-pressed={isPlayingStory}
+              title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
+              data-testid="button-play-story"
+            >
+              {isPlayingStory ? <StopCircle className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            </Button>
+          </div>
 
-                {/* Blind mode toggle */}
+          {/* ── Mobile toolbar: single "..." reveals all icons in a popover ── */}
+          <div className="flex md:hidden items-center">
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-9 w-9",
-                    settings.blindMode
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => updateSettings({ blindMode: !settings.blindMode })}
-                  aria-label={settings.blindMode ? t("story.disableBlindMode") : t("story.enableBlindMode")}
-                  aria-pressed={settings.blindMode}
-                  title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
-                  data-testid="button-toggle-blind-mode"
+                  variant="ghost" size="icon"
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={t("story.storySettings")}
                 >
-                  {settings.blindMode ? <Ear className="w-5 h-5" /> : <EarOff className="w-5 h-5" />}
+                  <MoreVertical className="w-5 h-5" />
                 </Button>
-
-                {/* Manual / auto AI turn toggle */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-9 w-9",
-                    settings.gameMode === "manual"
-                      ? "text-amber-400"
-                      : "text-muted-foreground hover:text-foreground",
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-1.5">
+                <div className="flex items-center gap-0.5">
+                  <ThemeToggle />
+                  {debugToggle && (
+                    <Button
+                      variant="ghost" size="icon"
+                      className={cn("h-9 w-9", debugPanelOpen ? "text-amber-400 bg-amber-400/10" : "text-muted-foreground hover:text-foreground")}
+                      onClick={() => setDebugPanelOpen((v) => !v)}
+                      title="Debug"
+                    >
+                      <Bug className="w-5 h-5" />
+                    </Button>
                   )}
-                  onClick={() =>
-                    updateSettings({ gameMode: settings.gameMode === "manual" ? "auto" : "manual" })
-                  }
-                  aria-label={settings.gameMode === "manual" ? t("story.switchToAutoAi") : t("story.switchToManualAi")}
-                  aria-pressed={settings.gameMode === "manual"}
-                  title={settings.gameMode === "manual" ? t("story.aiModeManual") : t("story.aiModeAuto")}
-                  data-testid="button-toggle-game-mode"
-                >
-                  {settings.gameMode === "manual" ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
-                </Button>
+                  <div className="w-px h-5 bg-border mx-0.5" />
+                  <Button
+                    variant="ghost" size="icon"
+                    className={cn("h-9 w-9", settings.blindMode ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+                    onClick={() => updateSettings({ blindMode: !settings.blindMode })}
+                    aria-pressed={settings.blindMode}
+                    title={settings.blindMode ? t("story.blindModeOn") : t("story.blindModeOff")}
+                    data-testid="button-toggle-blind-mode"
+                  >
+                    {settings.blindMode ? <Ear className="w-5 h-5" /> : <EarOff className="w-5 h-5" />}
+                  </Button>
+                  <Button
+                    variant="ghost" size="icon"
+                    className={cn("h-9 w-9", settings.gameMode === "manual" ? "text-amber-400" : "text-muted-foreground hover:text-foreground")}
+                    onClick={() => updateSettings({ gameMode: settings.gameMode === "manual" ? "auto" : "manual" })}
+                    aria-pressed={settings.gameMode === "manual"}
+                    title={settings.gameMode === "manual" ? t("story.aiModeManual") : t("story.aiModeAuto")}
+                    data-testid="button-toggle-game-mode"
+                  >
+                    {settings.gameMode === "manual" ? <ZapOff className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+                  </Button>
+                  <Button
+                    variant="ghost" size="icon"
+                    className={cn("h-9 w-9", isPlayingStory ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+                    onClick={handlePlayStory}
+                    disabled={!messages || messages.length === 0}
+                    aria-pressed={isPlayingStory}
+                    title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
+                    data-testid="button-play-story"
+                  >
+                    {isPlayingStory ? <StopCircle className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
 
-                {/* Play / Stop the entire story */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-9 w-9",
-                    isPlayingStory ? "text-primary" : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={handlePlayStory}
-                  disabled={!messages || messages.length === 0}
-                  aria-label={isPlayingStory ? t("story.stopStoryAria") : t("story.playStoryAria")}
-                  aria-pressed={isPlayingStory}
-                  title={isPlayingStory ? t("story.stopStoryTitle") : t("story.playStoryTitle")}
-                  data-testid="button-play-story"
-                >
-                  {isPlayingStory ? <StopCircle className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                </Button>
-
-                {/* Separator */}
-                <div className="w-px h-5 bg-border mx-0.5" />
-
-                {/* Settings — opens the Sheet from inside the popover */}
-                <Sheet>
+          {/* Settings sheet — always accessible on all screen sizes */}
+          <Sheet>
                   <SheetTrigger asChild>
                     <Button
                       variant="ghost"
@@ -1660,9 +1749,6 @@ export default function Story() {
                   </SheetContent>
                 </Sheet>
 
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
       </header>
 
@@ -1672,7 +1758,7 @@ export default function Story() {
           just hearing the error sound. */}
       {displayedError && (
         <div
-          className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive font-sans text-sm"
+          className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-destructive/10 dark:bg-red-900/30 border border-destructive/30 dark:border-red-500/40 text-destructive dark:text-red-400 font-sans text-sm"
           data-testid="error-banner"
           role="alert"
         >
@@ -1771,16 +1857,19 @@ export default function Story() {
                 ) : (
                   /* ── Text message ── */
                   <div
+                    dir={msg.language ? (isRtlLang(msg.language) ? "rtl" : "ltr") : undefined}
                     className={cn(
                       "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 ps-4 border-s-4 rounded-e-sm transition-colors cursor-pointer",
                       msg.role === "assistant"
                         ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
-                        : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
+                        : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]",
+                      selectedMsgId === msg.id && "ring-2 ring-inset ring-primary/40 bg-primary/5"
                     )}
                     onClick={(e) => {
                       // Don't open sheet when tapping a button/link inside the message
                       if ((e.target as HTMLElement).closest("button, a, input, textarea")) return;
                       if (editingId === msg.id) return;
+                      setSelectedMsgId(msg.id);
                       setActionSheetMsg(msg);
                     }}
                     {...(msg.role === "assistant"
@@ -1857,16 +1946,6 @@ export default function Story() {
                     ) : (
                       <div className="relative">
                         <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => handlePlayMessage(msg, PLAY_ORIGINAL)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              handlePlayMessage(msg, PLAY_ORIGINAL);
-                            }
-                          }}
-                          aria-label={t("story.playPassage")}
                           data-testid={`message-original-${msg.id}`}
                           data-playing={
                             playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
@@ -1874,7 +1953,7 @@ export default function Story() {
                               : undefined
                           }
                           className={cn(
-                            "cursor-pointer rounded-e border-s-2 ps-3 -ms-3 transition-colors hover:bg-muted/30",
+                            "rounded-e border-s-2 ps-3 -ms-3 transition-colors",
                             playingMsgId === msg.id && playingItem === PLAY_ORIGINAL
                               ? "border-primary bg-primary/5 ring-1 ring-primary/40"
                               : "border-transparent",
@@ -2061,6 +2140,32 @@ export default function Story() {
         <div ref={endOfStoryRef} className="h-4" />
       </div>
 
+      {/* Persistent TTS control bar — visible whenever a message or story is playing */}
+      {(playingMsgId !== null || isPlayingStory) && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-card border-t border-border/60 animate-in slide-in-from-bottom-2 duration-200">
+          <Volume2 className="w-4 h-4 text-primary animate-pulse shrink-0" />
+          <span className="text-xs text-muted-foreground font-sans flex-1 truncate">
+            {isPlayingStory ? t("story.playStoryTitle") : t("story.readingAloud")}
+          </span>
+          <Button
+            variant="ghost" size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => voice.isPaused ? voice.resumeSpeaking() : voice.pauseSpeaking()}
+            aria-label={voice.isPaused ? "Resume" : "Pause"}
+          >
+            {voice.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+          </Button>
+          <Button
+            variant="ghost" size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={stopPlayingStory}
+            aria-label="Stop playback"
+          >
+            <StopCircle className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
       {/* Bottom bar */}
       <div className="p-3 sm:p-4 md:p-6 border-t-4 border-dashed border-[#FFB84D]/40 bg-card rounded-t-2xl shadow-[0_-6px_24px_rgba(92,58,30,0.06)]">
         {settings.blindMode ? (
@@ -2198,13 +2303,11 @@ export default function Story() {
       />
 
       {/* ── Bottom action sheet — opened when user taps a story passage ── */}
-      <Sheet open={!!actionSheetMsg} onOpenChange={(v) => { if (!v) setActionSheetMsg(null); }}>
+      <Sheet open={!!actionSheetMsg} onOpenChange={(v) => { if (!v) { setActionSheetMsg(null); setSelectedMsgId(null); } }}>
         <SheetContent side="bottom" className="rounded-t-2xl p-0 pb-safe">
           <SheetHeader className="px-5 pt-4 pb-2 border-b border-border/40">
-            <SheetTitle className="text-sm font-semibold text-left font-sans truncate">
-              {actionSheetMsg
-                ? actionSheetMsg.content.slice(0, 80) + (actionSheetMsg.content.length > 80 ? "…" : "")
-                : ""}
+            <SheetTitle className="text-sm font-semibold text-left font-sans">
+              {actionSheetMsg?.role === "assistant" ? "AI passage" : "Your passage"}
             </SheetTitle>
           </SheetHeader>
           {actionSheetMsg && (
@@ -2214,7 +2317,6 @@ export default function Story() {
                 className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-accent/40 transition-colors text-sm font-sans text-left w-full"
                 onClick={() => {
                   handlePlayMessage(actionSheetMsg);
-                  setActionSheetMsg(null);
                 }}
               >
                 {playingMsgId === actionSheetMsg.id ? (

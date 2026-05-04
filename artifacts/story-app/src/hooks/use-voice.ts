@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type VoiceState = "idle" | "listening" | "speaking";
 
-// Minimal SpeechRecognition typing — the Web Speech API isn't included in
-// TypeScript's default DOM lib so we declare the surface we actually use.
 interface SpeechRecognitionLike {
   continuous: boolean;
   interimResults: boolean;
@@ -31,41 +29,20 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
 }
 
 export interface ListenOptions {
-  /** Ms of silence after speech ends before resolving. Default 4000. */
   silenceMs?: number;
-  /**
-   * Ms of no-speech before the nudge callback fires. Default 0 (disabled).
-   * Repeats every `nudgeMs` until `maxNudges` is reached, then stops recognition.
-   */
   nudgeMs?: number;
-  /** How many nudges to emit before giving up. Default 0 (infinite). */
   maxNudges?: number;
-  /** Called each time the nudge timer fires. Receives nudge index (1-based). */
   onNudge?: (nudgeIndex: number) => void;
-  /** BCP-47 language tag for SpeechRecognition (e.g. "en-US"). Default "en-US". */
   language?: string;
-  /**
-   * Hard cap (ms) on listening time once the user has actually started
-   * speaking. Useful to prevent the silence detector from getting stuck in
-   * noisy environments. Default 0 (disabled).
-   */
   maxSpeechMs?: number;
-  /**
-   * Called repeatedly as speech is being recognised (interim results).
-   * Receives the best-guess transcript so far (final + current interim).
-   */
   onInterim?: (partial: string) => void;
-  /**
-   * How many ms before the silence cutoff to fire `onSilenceWarning`.
-   * Default 0 (disabled). Typical value: 1500.
-   */
   silenceWarningMs?: number;
-  /** Called `silenceWarningMs` before the silence cutoff fires. */
   onSilenceWarning?: () => void;
 }
 
 export function useVoice(enabled: boolean) {
   const [state, setState] = useState<VoiceState>("idle");
+  const [isPaused, setIsPaused] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const synthRef = useRef(typeof window !== "undefined" ? window.speechSynthesis : null);
 
@@ -76,12 +53,6 @@ export function useVoice(enabled: boolean) {
     };
   }, []);
 
-  /**
-   * Pick the best available voice for the given BCP-47 lang. If a preferred
-   * voice name is provided, tries to match it first. Falls back to trying
-   * an exact language match, then a language-only match (e.g. "en" for
-   * "en-US").
-   */
   const pickVoice = useCallback(
     (lang: string, preferredVoiceName?: string): SpeechSynthesisVoice | null => {
       const synth = synthRef.current;
@@ -90,14 +61,14 @@ export function useVoice(enabled: boolean) {
       if (!voices || voices.length === 0) return null;
       const target = lang.toLowerCase();
       const targetBase = target.split("-")[0];
-      
+
       if (preferredVoiceName) {
         const preferred = voices.find(
           (v) => v.name.toLowerCase() === preferredVoiceName.toLowerCase()
         );
         if (preferred) return preferred;
       }
-      
+
       const exact = voices.find((v) => v.lang.toLowerCase() === target);
       if (exact) return exact;
       const baseMatch = voices.find(
@@ -168,6 +139,7 @@ export function useVoice(enabled: boolean) {
             if (resolved) return;
             resolved = true;
             setState("idle");
+            setIsPaused(false);
             resolve();
           };
           utterance.onstart = () => {
@@ -217,6 +189,17 @@ export function useVoice(enabled: boolean) {
   const stopSpeaking = useCallback(() => {
     synthRef.current?.cancel();
     setState("idle");
+    setIsPaused(false);
+  }, []);
+
+  const pauseSpeaking = useCallback(() => {
+    synthRef.current?.pause();
+    setIsPaused(true);
+  }, []);
+
+  const resumeSpeaking = useCallback(() => {
+    synthRef.current?.resume();
+    setIsPaused(false);
   }, []);
 
   const stopListening = useCallback(() => {
@@ -224,11 +207,6 @@ export function useVoice(enabled: boolean) {
     setState("idle");
   }, []);
 
-  /**
-   * Listen until speech is detected and then `silenceMs` of silence elapses.
-   * Calls `onInterim` repeatedly with the running transcript so callers can
-   * show live partial results. Calls `onSilenceWarning` before the cutoff.
-   */
   const listenOnce = useCallback(
     (options: ListenOptions = {}): Promise<string> => {
       const {
@@ -279,7 +257,6 @@ export function useVoice(enabled: boolean) {
         const resetSilenceTimer = () => {
           if (silenceTimer) clearTimeout(silenceTimer);
           if (warningTimer) { clearTimeout(warningTimer); warningTimer = null; }
-          // Schedule warning before the silence cutoff fires
           if (silenceWarningMs > 0 && onSilenceWarning && silenceMs > silenceWarningMs) {
             warningTimer = setTimeout(() => {
               onSilenceWarning();
@@ -329,7 +306,6 @@ export function useVoice(enabled: boolean) {
               hasContent = true;
             }
           }
-          // Fire interim callback with running best-guess transcript
           if (onInterim && (transcript || currentInterim)) {
             onInterim((transcript + currentInterim).trim());
           }
@@ -356,11 +332,6 @@ export function useVoice(enabled: boolean) {
     [enabled]
   );
 
-  /**
-   * Manual listen with streaming interim results (used outside of blind auto-loop).
-   * Calls `onResult` for every interim and final result so the caller can
-   * show live transcription in a textarea.
-   */
   const listen = useCallback(
     (
       onResult: (transcript: string) => void,
@@ -385,14 +356,11 @@ export function useVoice(enabled: boolean) {
       let finalAccum = "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (e: any) => {
-        // Only process newly arrived results (avoids Chrome mobile re-sending old
-        // interim results each event, which caused duplicate words).
         for (let i = e.resultIndex; i < e.results.length; i++) {
           if (e.results[i].isFinal) {
             finalAccum += e.results[i][0].transcript;
           }
         }
-        // Show the latest interim text from the last non-final result
         const last = e.results[e.results.length - 1];
         const interim = last && !last.isFinal ? last[0].transcript : "";
         onResult(finalAccum || interim);
@@ -418,5 +386,5 @@ export function useVoice(enabled: boolean) {
     [enabled]
   );
 
-  return { state, speak, stopSpeaking, stopListening, listen, listenOnce };
+  return { state, isPaused, speak, stopSpeaking, pauseSpeaking, resumeSpeaking, stopListening, listen, listenOnce };
 }
