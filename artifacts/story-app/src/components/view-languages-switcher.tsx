@@ -77,7 +77,8 @@ export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
 
       <PopoverContent
         align="end"
-        className="w-72 p-0 flex flex-col max-h-96"
+        className="w-72 p-0 flex flex-col overflow-hidden"
+        style={{ maxHeight: "min(24rem, calc(100dvh - 6rem))" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
@@ -120,7 +121,7 @@ export function ViewLanguagesSwitcher({ value, onChange, label }: Props) {
         </div>
 
         {/* Language list */}
-        <div className="overflow-y-auto py-1">
+        <div className="flex-1 min-h-0 overflow-y-auto py-1">
           {filtered.length === 0 ? (
             <p className="px-3 py-2 text-xs text-muted-foreground">No results</p>
           ) : (

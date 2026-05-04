@@ -21,7 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2 } from "lucide-react";
+import { Bug, Trash2 } from "lucide-react";
 import { useSettings } from "@/hooks/use-settings";
 import { useDocumentDir } from "@/hooks/use-document-dir";
 import { OpenrouterSettingsDialog } from "@/components/openrouter-settings-dialog";
@@ -29,6 +29,9 @@ import { SttSettingsDialog } from "@/components/stt-settings-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getT } from "@/lib/i18n";
 import { I18nProvider } from "@/lib/i18n-context";
+import { useHealthCheck } from "@/hooks/use-health-check";
+import { cn } from "@/lib/utils";
+import { DebugPanel } from "@/components/debug-panel";
 
 const CARD_COLORS = [
   { border: "#82C3DF", ribbon: "#82C3DF", shadow: "#82C3DF30" },
@@ -51,6 +54,9 @@ export default function Home() {
   const deleteConversation = useDeleteOpenrouterConversation();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+
+  const { status: healthStatus, refetch: healthRefetch } = useHealthCheck(30_000);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -128,6 +134,41 @@ export default function Home() {
 
         {/* Top settings bar */}
         <div className="flex justify-end items-center gap-1.5 px-4 sm:px-8 pt-4 sm:pt-6">
+          {/* Server health dot */}
+          <button
+            onClick={() => healthRefetch()}
+            className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={
+              healthStatus === "ok"
+                ? "Server online"
+                : healthStatus === "error"
+                ? "Server offline — click to retry"
+                : "Checking server…"
+            }
+            aria-label="Server health"
+          >
+            <div
+              className={cn(
+                "w-2.5 h-2.5 rounded-full transition-colors",
+                healthStatus === "ok"
+                  ? "bg-emerald-400"
+                  : healthStatus === "error"
+                  ? "bg-red-400 animate-pulse"
+                  : "bg-muted-foreground/30",
+              )}
+            />
+          </button>
+          {/* Debug panel toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setDebugPanelOpen((v) => !v)}
+            aria-label="Toggle debug panel"
+            title="Debug panel"
+          >
+            <Bug className="w-4 h-4" />
+          </Button>
           <ThemeToggle />
           <SttSettingsDialog settings={settings} onSave={updateSettings} />
           <OpenrouterSettingsDialog settings={settings} onSave={updateSettings} />
@@ -375,6 +416,7 @@ export default function Home() {
           )}
         </main>
       </div>
+      <DebugPanel open={debugPanelOpen} onClose={() => setDebugPanelOpen(false)} />
     </I18nProvider>
   );
 }

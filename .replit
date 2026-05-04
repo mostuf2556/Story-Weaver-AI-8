@@ -91,11 +91,11 @@ externalPort = 80
 
 [[ports]]
 localPort = 26135
-externalPort = 3000
+externalPort = 3001
 
 [[ports]]
 localPort = 26136
-externalPort = 3001
+externalPort = 3002
 
 [nix]
 packages = ["vim"]

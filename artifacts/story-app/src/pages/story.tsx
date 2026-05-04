@@ -92,6 +92,31 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getT } from "@/lib/i18n";
 import { I18nProvider } from "@/lib/i18n-context";
+import { useHealthCheck } from "@/hooks/use-health-check";
+import { STT_LANGUAGES } from "@/config/stt";
+import { TRANSLATE_LANGUAGES } from "@/config/translate-languages";
+
+/**
+ * Map a BCP-47 or Google-translate language code to a human-readable label.
+ * Checks STT_LANGUAGES first (regional codes like "en-US"), then
+ * TRANSLATE_LANGUAGES (short codes like "en", "he"), then falls back to the
+ * raw code string.
+ */
+function langCodeToName(code: string): string {
+  if (!code) return code;
+  const lower = code.toLowerCase();
+  for (const l of STT_LANGUAGES) {
+    if (l.code.toLowerCase() === lower) return l.label;
+  }
+  for (const l of TRANSLATE_LANGUAGES) {
+    if (l.code.toLowerCase() === lower) return l.label;
+  }
+  const base = lower.split("-")[0];
+  for (const l of TRANSLATE_LANGUAGES) {
+    if (l.code.toLowerCase() === base) return l.label;
+  }
+  return code;
+}
 
 /**
  * Turn an unknown error from a mutation/fetch into a single-line user-
@@ -280,6 +305,9 @@ export default function Story() {
   useDocumentDir(settings.uiLanguage);
   const t = getT(settings.uiLanguage);
 
+  // Server health indicator
+  const { status: healthStatus, refetch: healthRefetch } = useHealthCheck(30_000);
+
   // Debug panel — driven by config.json `debugToggle` field (default true)
   const [debugToggle, setDebugToggle] = useState(true);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
@@ -293,6 +321,9 @@ export default function Story() {
         /* keep default true if config fetch fails */
       });
   }, []);
+
+  // Bottom action sheet — which message's actions are open on mobile
+  const [actionSheetMsg, setActionSheetMsg] = useState<OpenrouterMessage | null>(null);
 
   // Inline editing
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -1365,6 +1396,31 @@ export default function Story() {
             </Button>
           )}
 
+          {/* Server health dot — pulse-checks every 30 s, click to recheck */}
+          <button
+            onClick={() => healthRefetch()}
+            className="p-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={
+              healthStatus === "ok"
+                ? "Server online"
+                : healthStatus === "error"
+                ? "Server offline — click to retry"
+                : "Checking server…"
+            }
+            aria-label="Server health"
+          >
+            <div
+              className={cn(
+                "w-2.5 h-2.5 rounded-full transition-colors",
+                healthStatus === "ok"
+                  ? "bg-emerald-400"
+                  : healthStatus === "error"
+                  ? "bg-red-400 animate-pulse"
+                  : "bg-muted-foreground/30",
+              )}
+            />
+          </button>
+
           {/* ── Single toolbar trigger: one icon reveals the full action bar ── */}
           <Popover>
             <PopoverTrigger asChild>
@@ -1716,11 +1772,17 @@ export default function Story() {
                   /* ── Text message ── */
                   <div
                     className={cn(
-                      "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 ps-4 border-s-4 rounded-e-sm transition-colors",
+                      "group relative animate-in fade-in slide-in-from-bottom-2 duration-500 ps-4 border-s-4 rounded-e-sm transition-colors cursor-pointer",
                       msg.role === "assistant"
                         ? "text-foreground border-[#82C3DF] hover:bg-[#82C3DF08]"
                         : "text-foreground border-[#E65C40] hover:bg-[#E65C4008]"
                     )}
+                    onClick={(e) => {
+                      // Don't open sheet when tapping a button/link inside the message
+                      if ((e.target as HTMLElement).closest("button, a, input, textarea")) return;
+                      if (editingId === msg.id) return;
+                      setActionSheetMsg(msg);
+                    }}
                     {...(msg.role === "assistant"
                       ? {
                           onTouchStart: (e) => handleSwipeTouchStart(e, msg.id),
@@ -1863,7 +1925,7 @@ export default function Story() {
                                 data-testid={`message-language-${msg.id}`}
                                 title={t("story.passageLanguageTitle")}
                               >
-                                {msg.language}
+                                {langCodeToName(msg.language)}
                               </span>
                             )}
                             {msg.role === "assistant" && msg.model && (
@@ -2134,6 +2196,92 @@ export default function Story() {
         open={debugPanelOpen}
         onClose={() => setDebugPanelOpen(false)}
       />
+
+      {/* ── Bottom action sheet — opened when user taps a story passage ── */}
+      <Sheet open={!!actionSheetMsg} onOpenChange={(v) => { if (!v) setActionSheetMsg(null); }}>
+        <SheetContent side="bottom" className="rounded-t-2xl p-0 pb-safe">
+          <SheetHeader className="px-5 pt-4 pb-2 border-b border-border/40">
+            <SheetTitle className="text-sm font-semibold text-left font-sans truncate">
+              {actionSheetMsg
+                ? actionSheetMsg.content.slice(0, 80) + (actionSheetMsg.content.length > 80 ? "…" : "")
+                : ""}
+            </SheetTitle>
+          </SheetHeader>
+          {actionSheetMsg && (
+            <div className="px-4 py-4 flex flex-col gap-1">
+              {/* Play / Stop */}
+              <button
+                className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-accent/40 transition-colors text-sm font-sans text-left w-full"
+                onClick={() => {
+                  handlePlayMessage(actionSheetMsg);
+                  setActionSheetMsg(null);
+                }}
+              >
+                {playingMsgId === actionSheetMsg.id ? (
+                  <StopCircle className="w-5 h-5 text-primary shrink-0" />
+                ) : (
+                  <Volume2 className="w-5 h-5 text-muted-foreground shrink-0" />
+                )}
+                <span>{playingMsgId === actionSheetMsg.id ? t("story.stopReadPassage") : t("story.readPassage")}</span>
+              </button>
+              {/* Edit */}
+              <button
+                className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-accent/40 transition-colors text-sm font-sans text-left w-full"
+                onClick={() => {
+                  startEdit(actionSheetMsg.id, actionSheetMsg.content);
+                  setActionSheetMsg(null);
+                }}
+              >
+                <Pencil className="w-5 h-5 text-muted-foreground shrink-0" />
+                <span>{t("story.editPassage")}</span>
+              </button>
+              {/* Regenerate (AI messages only) */}
+              {actionSheetMsg.role === "assistant" && (
+                <button
+                  className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-accent/40 transition-colors text-sm font-sans text-left w-full disabled:opacity-50"
+                  disabled={regeneratingMsgId !== null}
+                  onClick={() => {
+                    handleRegenerateMessage(actionSheetMsg.id);
+                    setActionSheetMsg(null);
+                  }}
+                >
+                  {regeneratingMsgId === actionSheetMsg.id ? (
+                    <RefreshCw className="w-5 h-5 text-muted-foreground shrink-0 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-5 h-5 text-muted-foreground shrink-0" />
+                  )}
+                  <span>{t("story.regeneratePassage")}</span>
+                </button>
+              )}
+              <div className="h-px bg-border/40 my-1" />
+              {/* Delete this */}
+              <button
+                className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-destructive/10 transition-colors text-sm font-sans text-left w-full text-destructive"
+                disabled={deleteMessage.isPending || deleteFromHere.isPending}
+                onClick={() => {
+                  handleDeleteMessage(actionSheetMsg.id);
+                  setActionSheetMsg(null);
+                }}
+              >
+                <Trash2 className="w-5 h-5 shrink-0" />
+                <span>{t("story.deleteOnlyThis")}</span>
+              </button>
+              {/* Delete from here */}
+              <button
+                className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-destructive/10 transition-colors text-sm font-sans text-left w-full text-destructive"
+                disabled={deleteMessage.isPending || deleteFromHere.isPending}
+                onClick={() => {
+                  handleDeleteFromHere(actionSheetMsg.id);
+                  setActionSheetMsg(null);
+                }}
+              >
+                <ListEnd className="w-5 h-5 shrink-0" />
+                <span>{t("story.deleteFromHereToEnd")}</span>
+              </button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
     </I18nProvider>
   );

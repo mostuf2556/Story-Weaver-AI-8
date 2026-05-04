@@ -382,19 +382,20 @@ export function useVoice(enabled: boolean) {
       recognition.lang = language;
 
       recognition.onstart = () => setState("listening");
+      let finalAccum = "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       recognition.onresult = (e: any) => {
-        let finalText = "";
-        let interimText = "";
-        for (let i = 0; i < e.results.length; i++) {
+        // Only process newly arrived results (avoids Chrome mobile re-sending old
+        // interim results each event, which caused duplicate words).
+        for (let i = e.resultIndex; i < e.results.length; i++) {
           if (e.results[i].isFinal) {
-            finalText += e.results[i][0].transcript;
-          } else {
-            interimText += e.results[i][0].transcript;
+            finalAccum += e.results[i][0].transcript;
           }
         }
-        // Report final text first; fall back to interim so user sees live progress
-        onResult(finalText || interimText);
+        // Show the latest interim text from the last non-final result
+        const last = e.results[e.results.length - 1];
+        const interim = last && !last.isFinal ? last[0].transcript : "";
+        onResult(finalAccum || interim);
       };
       recognition.onend = () => {
         setState("idle");
